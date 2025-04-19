@@ -321,19 +321,18 @@ function play.draw()
 end
 
 function play.update()
-  local valid_moves = keys(state.moves)
-  if #valid_moves == 0 then
-    game_over.init()
-    return
-  end
+ local valid_moves = keys(state.moves)
+ if #valid_moves == 0 then
+   game_over.init()
+   return
+ end
 
-  for move in all(valid_moves) do
-    if btnp(move)
-      and (not play.move
-           or move != play.move.btn)
+ for move in all(valid_moves) do
+  if btnp(move)
+     and (not play.move
+          or move != play.move.btn)
   then
    play.move = {btn=move, t=t()}
-   play.drawn = false
    break
 
   elseif play.move
@@ -343,7 +342,6 @@ function play.update()
     state =
       next_state(move,state)
     play.move = nil
-    play.drawn = false
     slidesfx()
     save_game()
     break
@@ -403,12 +401,21 @@ function clearwarn.draw()
  draw_ui_grid({{text="careful!\nyou will lose\nall progress on\nyour current board"}}, 0, true, 0)
 end
 
+btn_state = {}
 function _update()
  if btn(0) and btn(1) and btn(2) and btn(3) then
   for i=0,63 do
    dset(i,0)
   end
  end
+
+ for i=0,5 do
+  if btn_state[i] != btn(i) then
+   mode.drawn=false
+   btn_state[i] = btn(i)
+  end
+ end
+
  mode.update()
 end
 
@@ -1708,10 +1715,8 @@ function menu.update()
    shift_panel(1)
   elseif btnp(2) then
    shift_selection(cur_ui,-1)
-   clsdraw(menu)
   elseif btnp(3) then
    shift_selection(cur_ui,1)
-   clsdraw(menu)
   elseif btnp(4) then
    if menu.prior==game_over then
     transition.init(play, menu, 0, -1)
@@ -1720,7 +1725,6 @@ function menu.update()
    end
   elseif btnp(5) then
     press_button(cur_ui)
-    clsdraw(menu)
   end
  end
 end
