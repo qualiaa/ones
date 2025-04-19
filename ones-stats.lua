@@ -1,0 +1,1710 @@
+-- game logic
+--------------
+-- ones stats screen
+-- by qualia
+--------------
+
+gw, gh = 4, 4
+
+
+function bonus_piece(max_val)
+ pieces={}
+ for i=max(max_val-5,4),
+       max_val-3 do
+  add(pieces,i)
+ end
+ return pieces
+end
+
+function piece_from_np(np,max_val)
+ if np == 4 and max_val > 6 then
+  return bonus_piece(max_val)
+ end
+ return min(np,3)
+end
+
+function make_grid(w,h)
+ local grid = {}
+ for j=1,h do
+  grid[j] = {}
+  for i=1,w do
+   grid[j][i] = 0
+  end
+ end
+ return grid
+end
+
+function max_ever_val()
+ local mv = 0
+ for b in all(data.boards) do
+  mv = max(mv, b.max_val)
+ end
+ return mv
+end
+
+function init_board(w,h,b)
+ local grid = make_grid(w,h)
+
+ local n = 9
+ if settings.boost then
+  grid[4][1] = max(3, max_ever_val() - 3)
+  n -= 1
+ end
+
+ for i=1,n do
+  local x,y
+  repeat
+   x = rndint(w)
+   y = rndint(h)
+  until grid[y][x] == 0
+  grid[y][x], b = bucket(b)
+ end
+ add(b,v)
+ return grid, b
+end
+
+function score_tile(v)
+ return v>2 and bigint.new(3)^(v-2) or 0
+end
+
+function calculate_score(grid)
+ score = 0
+ foreach(joinlists(grid), function(x)
+           score+=score_tile(x) end)
+ return score
+end
+-->8
+-- game states
+
+function base_bucket()
+ return {1,1,1,1,2,2,2,2,3,3,3,3}
+end
+
+data = {}
+
+state = nil
+function make_state(grid, np, b)
+ local mv = maximum(grid)
+
+ return {
+  grid=grid,
+  piece_bucket=b,
+  next_pieces=piece_from_np(np,mv),
+  moves=nil,
+  max_val=mv,
+  finished=false
+ }
+end
+
+transition = {}
+
+function transition.init(target, source, dx, dy)
+  btnsfx()
+  target.init()
+  transition.target = target
+  transition.source = source
+  transition.dx, transition.dy = dx, dy
+  transition.x, transition.y = 0, 0
+  transition.anim = animate(0.5,ease.o.quad,
+                            0,120,function(t)
+                              transition.x = t*dx
+                              transition.y = t*dy
+                            end)
+  mode = transition
+end
+
+function transition.update()
+  cls(scheme.bg)
+  coresume(transition.anim)
+  if coalive(transition.anim) then
+    camera(transition.x, transition.y)
+    transition.source.draw()
+    camera(transition.x - 120 * transition.dx,
+           transition.y - 120 * transition.dy)
+    transition.target.draw()
+  else
+    camera()
+    transition.target.draw()
+    mode = transition.target
+  end
+end
+
+function new_state()
+ local b, grid, np
+ b = base_bucket()
+ grid, b = init_board(gw,gh,b)
+ np, b = bucket(b)
+ return make_state(grid, np, b)
+end
+
+
+play = {}
+function play.init()
+ mode = play
+ play.drawn = false
+ play.move = nil
+ -- disable btnp repeating
+ poke(0x5f5c, 255)
+end
+
+function play.draw()
+ draw_next_pieces(state.next_pieces)
+ if play.move then
+   draw_grid(state.grid,nil,
+             state.moves[play.move.btn].move_mask,
+             play.move.btn)
+ else
+   draw_grid(state.grid)
+ end
+ draw_top_buttons("MENU","▤",
+                  "STATS","∧")
+end
+
+function play.update()
+ load("ones.p8")
+end
+
+function _update()
+ mode.update()
+end
+
+function _init()
+ store.init()
+ local loaded = load_data()
+ data.last_name = loaded.last_name
+ data.boards = loaded.boards
+
+ settings = loaded.settings
+ apply_settings()
+
+ local grid, np, b = load_game()
+ if grid then
+  state = make_state(grid, np, b)
+  play.init()
+  clsdraw(play)
+  last_mode = play
+ else
+  titlescreen.init()
+  clsdraw(titlescreen)
+  last_mode = titlescreen
+ end
+ transition.init(stats, mode, 1, 0)
+end
+
+-->8
+-- stats screen
+
+stats = {}
+function stats.init()
+ mode = stats
+ local n_scores = store.load_byte(152)
+ stats.scores =
+   lmap(function(x) return x >>> 5 end,
+         filter(function(x) return x != 0 end,
+           store.load_bytes(153, 102)))
+ -- because this is a ring, we need
+ -- to put the scores before the pivot
+ -- at the end of the list
+ for i=1,n_scores do
+  add(stats.scores, deli(stats.scores, 1))
+ end
+ stats.current_score = poorlog10(calculate_score(state.grid))
+ add(stats.scores,stats.current_score)
+ stats.hicards = store.load_bytes(140,12)
+
+ local sum = 0
+ for v in all(stats.hicards) do
+  sum += v
+ end
+ stats.hicard_frame = #stats.scores + 1
+ stats.num_frames = stats.hicard_frame + sum + 1
+ stats.frame = 0
+ stats.subframe = 0
+end
+
+function stats.update()
+ if btnp(4) or btnp(5) then
+  transition.init(last_mode, stats, -1, 0)
+ end
+
+ if stats.frame < stats.num_frames then
+  stats.subframe += 1
+  if stats.subframe % 2 == 0 then
+   stats.frame += 1
+   clsdraw(stats)
+  end
+ end
+end
+
+
+function stats.draw()
+ local gui_y = 34
+
+ local xs, ys = {}, {}
+ for i=1,min(stats.frame, #stats.scores) do
+  add(xs, i)
+  add(ys, stats.scores[i])
+ end
+
+ print("SCORE OVER TIME", 23, gui_y, scheme.stats_subtitle)
+ gui_y += 8
+ local min_v, max_v = minmax(stats.scores)
+ local ax = make_ax(
+   34,gui_y,70,20,
+   1, max(#stats.scores, 2),
+   min_v, max_v
+ )
+
+ if stats.frame >= 1 then
+  color(scheme.red)
+  plot(xs,ys,ax,pset)
+
+  -- Add current score to grid
+  if stats.frame >= #stats.scores then
+    local x, y = axpoint(ax,#stats.scores,stats.current_score)
+    pset(x,y,scheme.stats_current)
+  end
+ end
+
+ -- Draw axes
+ ax.px -= 4
+ ax.w += 12
+ ax.h += 2
+ color(scheme.txt)
+ draw_ax(ax,1,min_v,3)
+
+ color(scheme.txt)
+ printr(loglabel(ax.y1), ax.px-2, ax.py)
+ printr(loglabel((ax.y1-ax.y0) / 2), ax.px-2, ax.py + ax.h \ 2)
+ printr(loglabel(ax.y0), ax.px-2, ax.py + ax.h)
+
+ gui_y+=30
+
+ local hist_frame = stats.frame - stats.hicard_frame
+ local mv = nil
+ if stats.frame >= stats.num_frames then
+  mv = state.max_val-2
+ end
+
+ print("HIGH CARD DISTRIBUTION", 23, gui_y, scheme.stats_subtitle)
+ gui_y+=8
+
+ draw_high_card_dist(
+   gui_y, subhist(stats.hicards, hist_frame), mv)
+ draw_top_buttons("GAME","⬅️")
+end
+
+function loglabel(x)
+ local num_zeros = flr(x)
+ local fractional_part = x-num_zeros
+ local digit = 9
+ for i, v in pairs(log10_lookup) do
+  if fractional_part < v then
+   digit = i - 1
+   break
+  end
+ end
+ local s = tostr(digit)
+ if num_zeros == 1 then
+  s ..= "0"
+ elseif num_zeros == 2 then
+  s ..= "00"
+ elseif num_zeros == 3 then
+  s ..= "k"
+ elseif num_zeros == 4 then
+  s ..= "0k"
+ elseif num_zeros == 5 then
+  s ..= "00k"
+ elseif num_zeros == 6 then
+  s ..= "m"
+ end
+ return s
+end
+
+function subhist(hist, max_n)
+ local sum = 0
+ local new_hist = {}
+ for k,n in pairs(hist) do
+  new_hist[k] = max(0, min(n, max_n - sum))
+  sum += n
+ end
+ return new_hist
+end
+
+function draw_high_card_dist(y, hist, current_mv)
+ hist = shallowcopy(hist)
+
+ if current_mv then
+  hist[current_mv] += 1
+ end
+ local present = {}
+ for v,n in pairs(hist) do
+  if n != 0 then
+   add(present, v)
+  end
+ end
+
+ function draw_bars(start_index, x, w)
+  local vals, vals_c = {}, {}
+  for i=start_index,min(start_index+5,#present) do
+   local v = present[i]
+   if v == current_mv then
+    add(vals,0)
+    add(vals_c,hist[v])
+   else
+    add(vals,hist[v])
+    add(vals_c,0)
+   end
+  end
+  local bar_height = 6
+  local spacing = 2
+  local min_w = 10
+  local ax = make_ax(x+min_w,y,w-min_w)
+  local _,max_x = minmax(hist)
+  max_x = max(max_x, 5)
+  color(scheme.red)
+  hbar(vals,ax,bar_height,spacing,max_x)
+  color(scheme.stats_current)
+  hbar(vals_c,ax,bar_height,spacing, max_x)
+
+  for i=start_index,min(start_index+5,#present) do
+   local bar_y = y + (bar_height+spacing) * (i  - start_index)
+   local is_current = present[i] == current_mv
+   local txt_col = (
+     is_current
+     and scheme.stats_current_txt
+     or scheme.stats_txt)
+   local n = hist[present[i]]
+   rectfill(x, bar_y, x+min_w, bar_y+bar_height,
+            is_current
+            and scheme.stats_current
+            or scheme.red)
+   print(tostr(present[i]), 1+x, 1+bar_y, txt_col)
+   smallnum(n,
+        x+min_w + n\ax.dx - 3 - 4*(#tostr(n)-1),
+        3+bar_y,txt_col)
+  end
+ end
+
+ if #present <= 6 then
+   draw_bars(1, 23, 82)
+ else
+   draw_bars(1, 23, 40)
+   draw_bars(7, 73, 40)
+ end
+end
+
+function smallnum(n,x,y,c)
+ x = x or @0x5f26
+ y = y or @0x5f27
+ c = c or @0x5f25
+ n = tostr(n)
+ pal(7,c)
+ palt(0,1)
+ for i=1,#n do
+  spr(tonum(sub(n,i,i)),x + (i-1) * 4, y)
+ end
+ pal()
+end
+
+-->8
+-- plotting
+-- plots
+
+function round(x)
+ return (x-flr(x)<0.5 and
+  flr or ceil)(x)
+end
+
+function lerp(t,x0,x1)
+ return x0 *(1-t) + (x1-x0)*t
+end
+
+function make_ax(posx,posy,
+  width,height,x0,x1,y0,y1)
+ local ax= {
+   px=posx,py=posy,
+   w=width,h=height,
+   x0=x0,x1=x1,y0=y0,y1=y1
+ }
+ if x0 and x1 then
+  ax.dx = (x1-x0)/width
+ end
+ if y0 and y1 then
+  ax.dy = (y1-y0)/height
+ end
+ return ax
+end
+
+function axpoint(ax,x,y)
+  return ax.px +
+         round((x-ax.x0)/ax.dx),
+         ax.py + ax.h -
+         round((y-ax.y0)/ax.dy)
+end
+
+function linfun(fn,x0,x1,n)
+ local xs,ys = {},{}
+ for x=x0,x1,(x1-x0)/n do
+  add(xs,x)
+  add(ys,fn(x))
+ end
+ return xs, ys
+end
+
+function plotfn(fn,ax,addpt,x0,x1)
+ ax.x0 = ax.x0 or x0
+ ax.x1 = ax.x1 or x1
+ if not ax.dx then
+  ax.dx = (ax.x1-ax.x0)/width
+ end
+
+ local xs,ys=linfun(fn,ax.x0,ax.x1,ax.w)
+ plot(xs,ys,ax,addpt)
+end
+
+function minmax(xs)
+ local x0, x1
+ for i=1,#xs do
+  x0=min(x0,xs[i])
+  x1=max(x1,xs[i])
+ end
+ return x0, x1
+end
+
+function plot(xs,ys,ax,addpt)
+ addpt = addpt or line
+ if not (ax.x0 and ax.x1) then
+  local x0, x1 = minmax(xs)
+  ax.x0 = ax.x0 or x0
+  ax.x1 = ax.x1 or x1
+  ax.dx = (ax.x1-ax.x0)/ax.w
+ end
+ if not (ax.y0 and ax.y1) then
+  local y0, y1 = minmax(ys)
+  ax.y0 = ax.y0 or y0
+  ax.y1 = ax.y1 or y1
+  ax.dy = (ax.y1-ax.y0)/ax.h
+ end
+
+ if addpt==line then
+  line()
+ end
+ for i=1,#xs do
+  local x,y = axpoint(ax,xs[i],ys[i])
+  addpt(x,y)
+ end
+end
+
+function draw_ax(ax,x,y,dotted)
+ dotted = (dotted==true and 2) or dotted or 0
+ x = x or 0
+ y = y or 0
+ x,y = axpoint(ax,x,y)
+ local x0,y0 = axpoint(ax,ax.x0,ax.y0)
+ local x1,y1 = axpoint(ax,ax.x1,ax.y1)
+ if dotted > 1 then
+  for xi=ax.px,ax.px+ax.w,dotted do
+   pset(xi,y)
+  end
+  for yi=ax.py,ax.py+ax.h,dotted do
+   pset(x,yi)
+  end
+ else
+  line(x,y0,x,y1)
+  line(x0,y,x1,y)
+ end
+end
+
+function xticks(ax)
+ local x0, x1 = tostr(ax.x0),tostr(ax.x1)
+ local y = ax.py+ax.h+2
+
+ print(x1,ax.px+ax.w,y)
+ print(x0,ax.px,y)
+end
+
+function yticks(ax)
+ local y0, y1 = tostr(ax.y0),tostr(ax.y1)
+ local x = ax.px-1
+
+ print(ax.y1,x-4*#y1,ax.py)
+ print(ax.y0,x-4*#y0,ax.py+ax.h)
+end
+
+function hbar(
+  xs,ax,bar_width,spacing,max_x)
+ bar_width=bar_width or 1
+ spacing = spacing or 0
+ if not max_x then
+  _,max_x = minmax(xs)
+ end
+
+ ax.w = ax.w or max_x
+ ax.h = ax.h or #xs*(bar_width+spacing) - spacing
+ ax.dx = ax.dx or max_x/ax.w
+ ax.dy = ax.dy or #xs/ax.h
+ ax.x0 = ax.x0 or 0
+ ax.y0 = ax.y0 or 0
+
+ for i=1,#xs do
+  local x0, x1 = ax.px, ax.px+xs[i]/ax.dx
+  local y0, y1
+  if ax.dy < 0 then
+   y0 = ax.py+ax.h-i*(bar_width+spacing)
+   y1 = y0-bar_width
+  else
+   y0 = ax.py+(i-1)*(bar_width+spacing)
+   y1 = y0+bar_width
+  end
+  if x1-x0 > 0 then
+   rectfill(x0, y0, x1, y1)
+  end
+ end
+end
+
+
+-->8
+-- drawing
+
+w, h = 128, 128
+tw = 16
+
+light_scheme = {
+ -- frames
+ frame_base=5,
+ frame_rim=6,
+ go_base=5,
+ go_rim=9,
+ -- cards
+ card_txt=0,
+ high_txt=8,
+ red=8,
+ red_shad=2,
+ blue=12,
+ blue_shad=13,
+ card_base=7,
+ card_shad=9,
+ --buttons
+ btn_base=13,
+ btn_shad=1, --1/5
+ btn_txt=7,
+ -- other backgrounds & text
+ bg=7,
+ grid_base=6,
+ card_slot=13,
+ txt=13,
+ score_txt=0,
+ tile_score=9,
+ stats_txt=7,
+ stats_current=9,
+ stats_current_txt=0,
+ stats_subtitle=6
+}
+
+dark_scheme = {
+ -- frames
+ frame_base=5, --0
+ frame_rim=6, --5
+ go_base=5,--0
+ go_rim=8,
+ -- cards
+ card_txt=0,
+ high_txt=10,
+ red=8,
+ red_shad=2,
+ blue=12,
+ blue_shad=5, --5/1
+ card_base=13, --5/6/13
+ card_shad=1, --1/2/5/
+ --buttons
+ btn_base=13, --1
+ btn_shad=0,
+ btn_txt=7,
+ -- other backgrounds & text
+ bg=1, --1/0
+ grid_base=0, --5/1/0
+ card_slot=1,
+ txt=6, --6/5
+ score_txt=7,
+ tile_score=7,
+ stats_txt=7,
+ stats_current=10,
+ stats_current_txt=0,
+ stats_subtitle=13
+}
+
+scheme = dark_scheme
+
+function tile_col(v)
+  local c1,c2 = scheme.card_base,
+                scheme.card_shad
+  if v == 0 then
+    c1 = scheme.card_slot
+    c2 = c1
+  elseif v == 1 then
+    c1,c2=scheme.blue, scheme.blue_shad
+  elseif v == 2 then
+    c1,c2=scheme.red, scheme.red_shad
+  end
+  return c1, c2
+end
+function tile_txt_col(v,mv)
+ if v > 2 then
+  local c = scheme.card_txt
+  if v > 11 then
+   if v == mv then
+    c = 14
+   else
+    c = 15
+   end
+  elseif v == mv and mv > 3 then
+   c = scheme.high_txt
+  end
+  return c
+ end
+end
+function tile_label(v)
+ return (v-2)%10 + (v-2)\10
+end
+function draw_tile(x,y,v,mv)
+ local c1,c2 = tile_col(v)
+ local tc = tile_txt_col(v,mv)
+ local x1,x2 = x+4, x+13
+ rectfill(x1,y+2,x2,y+11,c1)
+ rectfill(x1,y+12,x2,y+13,c2)
+
+ if tc then
+  print(tile_label(v),
+        x + 0.5*tw,
+        y + 0.25*tw,tc)
+ end
+end
+
+function draw_next_pieces(pieces)
+ rectfill((w-3*tw)/2,8,
+          (w+3*tw)/2,8+tw,
+          scheme.bg)
+ if type(pieces) == "number" then
+  pieces = {pieces}
+ end
+
+ local width = #pieces*tw
+
+ rectfill((w-width)/2,8,
+          (w+width)/2,8+tw,
+          scheme.grid_base)
+ for i, p in ipairs(pieces) do
+  draw_tile((w-width)/2+(i-1)*tw,8,p)
+ end
+end
+
+function grid_pos(i, j)
+ local sx = (w/2 - gw*tw/2)
+ local sy = (h/2 - gw*tw/2) + 10
+ return sx+(i-1)*tw, sy+(j-1)*tw
+end
+
+function draw_back(w, h, x_off)
+ local sx, sy = grid_pos(1,1)
+ local ex, ey = grid_pos(w+1, h+1)
+ x_off = x_off or 0
+ rectfill(sx-2 + x_off,
+          sy-2,
+          ex+2 + x_off,
+          ey+2,
+          scheme.grid_base)
+end
+
+function draw_grid(grid, x_off, mask, dir)
+ local w, h, max_val = #grid[1], #grid, maximum(grid)
+ x_off = x_off or 0
+
+ local dx, dy = move2dirs(dir or 0)
+ draw_back(w, h, x_off)
+
+ mapgrid(
+   function(i,j,v)
+     local x, y = grid_pos(i,j)
+     x += x_off
+     -- hack: always draw centred backing
+     draw_tile(x,y,0)
+     if mask and mask[j][i] then
+      x+=2*dx
+      y+=2*dy
+     end
+     draw_tile(x,y,v,max_val)
+   end,
+   grid)
+
+end
+
+-->8
+-- sound
+function ifsfx(n,o,l)
+ if settings.sfx_on then
+  sfx(n,3,o,l)
+ end
+end
+
+function btnsfx()
+ ifsfx(61)
+end
+
+function slidesfx()
+ ifsfx(61 + rndint(2))
+end
+
+
+-->8
+-- utils
+
+function divmod(x,d)
+ return x\d, x%d
+end
+
+function xor(a,b)
+ return (a or b) and not (a and b)
+end
+
+function move2dirs(move)
+ local h = move\2
+ local d = band(move, 1)*2-1
+ return d*(1-h),  d*h
+end
+
+function transpose(t)
+ local r = {}
+ for i=1,#t[1] do
+  r[i] = {}
+  for j=1,#t do
+   r[i][j]=t[j][i]
+  end
+ end
+ return r
+end
+
+function reverse(t)
+ local r = {}
+ for i=1,#t do
+  r[i] = t[1+#t-i]
+ end
+ return r
+end
+
+function mapgrid(f, grid)
+ local ng = {}
+ for j=1,#grid do
+  add(ng, {})
+  for i=1,#grid[j] do
+   add(ng[j], f(i, j, grid[j][i]))
+  end
+ end
+ return ng
+end
+
+function shallowcopy(t)
+ local copy = {}
+ for k,v in pairs(t) do
+  copy[k]=v
+ end
+ return copy
+end
+
+function deepcopy(t)
+ local new={}
+ for k, v in pairs(t) do
+  if type(v) == "table" then
+   v = deepcopy(v)
+  end
+  new[k] = v
+ end
+ setmetatable(new, getmetatable(t))
+ return new
+end
+
+function keys(t)
+ local keyset={}
+ for k,v in pairs(t) do
+  add(keyset,k)
+ end
+ return keyset
+end
+
+function any(t)
+ for v in all(t) do
+  if v then
+   return true
+  end
+ end
+ return false
+end
+
+function maximum(t)
+ local to_search={t}
+ local res = 0x8000
+ while #to_search > 0  do
+  local k, table = next(to_search)
+  del(to_search, table)
+  for v in all(table) do
+   if type(v) == "table" then
+    add(to_search,v)
+   elseif type(v) == "number" then
+    res = max(res,v)
+   end
+  end
+ end
+ return res
+end
+
+function sort(t, cmp)
+ cmp = cmp or function(a,b) return a<b end
+ t = shallowcopy(t)
+
+ for i=2,#t do
+  for j=i,2,-1 do
+   if cmp(t[j-1],t[j]) then break end
+   t[j], t[j-1] = t[j-1], t[j]
+  end
+ end
+ return t
+end
+
+function joinlists(lists)
+ local result = {}
+ for list in all(lists) do
+  for v in all(list) do
+   add(result, v)
+  end
+ end
+ return result
+end
+
+function printc(s,x,y,c)
+ y = y or @0x5f27
+ c = c or @0x5f25
+ print(s,x-2*#s,y,c)
+end
+function printr(s,x,y,c)
+ y = y or @0x5f27
+ c = c or @0x5f25
+ print(s,x-4*#s,y,c)
+end
+
+function str_in(ss, s)
+ for i=1,#s-#ss+1 do
+  if sub(s, i,i+#ss-1) == ss then
+   return true
+  end
+ end
+ return false
+end
+
+function str_reverse(s)
+ local ns=""
+ for i=1,#s do
+  ns..=sub(s,-i,-i)
+ end
+ return ns
+end
+
+function str_concat(strs)
+ local s=""
+ for ss in all(strs) do
+  s..=ss
+ end
+ return s
+end
+
+function str_divvy(s, n)
+ local subs = {}
+ for i=1,#s,n do
+  add(subs, sub(s,i,i+n-1))
+ end
+ return subs
+end
+
+function str_lstrip(s,ss)
+ local start = 1
+ while (start <= #s and
+   str_in(sub(s,start,start), ss)) do
+  start+=1
+ end
+ return sub(s,start)
+end
+
+function lmap(f,l)
+ local nl={}
+ for v in all(l) do
+  add(nl, f(v))
+ end
+ return nl
+end
+
+function filter(f,l)
+ local nl={}
+ for v in all(l) do
+  if f(v) then
+   add(nl,v)
+  end
+ end
+ return nl
+end
+
+function coalive(c)
+ return costatus(c) ~= "dead"
+end
+-->8
+-- titlescreen
+
+title_y = 20
+titlescreen = {}
+
+function titlescreen.init()
+ mode = titlescreen
+ titlescreen.drawn = false
+
+ grid = make_grid(4,3)
+ for i=3,max_ever_val() do
+  k,j=divmod(i-3,4)
+  grid[k+1][j+1]=i
+ end
+
+ titlescreen.grid = grid
+end
+
+function titlescreen.update()
+ load("ones.p8")
+end
+
+function draw_top_buttons(l_txt,l_ico,r_txt,r_ico)
+  local y = 15
+  draw_button(23,y,l_ico,
+              scheme.btn_base,
+              scheme.btn_shad)
+  print(l_txt,23,y+10,scheme.btn_base)
+  if r_txt then
+   draw_button(93,y,r_ico,
+               scheme.btn_base,
+               scheme.btn_shad)
+   printr(r_txt,93+14,y+10,scheme.btn_base)
+  end
+end
+
+function titlescreen.draw()
+ print("o",55,title_y,scheme.red)
+ print("n",59,title_y,scheme.blue)
+ print("es!",63,title_y,scheme.txt)
+
+ draw_grid(titlescreen.grid)
+
+ draw_long_boy({text="play ones ❎"},
+   32,104,true)
+
+ draw_top_buttons("MENU","▤",
+                  "PLAY","❎")
+end
+
+-->8
+-- menu
+
+menu = {}
+-- useful symbols:
+--  credits/thanks ★
+--  stats ∧
+--  🅾️❎⬅️⬇️⬆️➡️
+--  thanks ♥
+--  home/title ⌂
+--  loading ⧗
+--  웃☉ˇ🐱
+--  music ♪
+--  on/off ☉🅾️❎◆
+
+panel_width = 90
+
+back_button = {
+ icon="❎"
+}
+
+titlescreen_button = {
+ text="main menu",
+ action=function()
+  transition.init(clearwarn, menu, 0, 1)
+ end
+}
+
+function apply_settings()
+ scheme = settings.night
+   and dark_scheme or light_scheme
+ music_playing = stat(57)
+ if settings.music_on and not music_playing then
+  music(0)
+ elseif not settings.music_on and music_playing then
+  music(-1, 300)
+ end
+end
+
+function draw_button(x,y,i,c1,c2,long)
+ local w = long and 78 or 12
+ rectfill(x,y,x+w,y+8,c1)
+ line(x,y+9,x+w,y+9,c2)
+ if long then
+   printc(i,x+w/2,y+2,scheme.btn_txt)
+ else
+   print(i,x+3,y+2,scheme.btn_txt)
+ end
+end
+
+
+function is_btn(e)
+ return e.toggle or e.action
+end
+
+function shift_selection(ui,d)
+ ui.selected = mid(
+   1,
+   ui.selected + d,
+   #filter(is_btn,ui))
+end
+
+
+function clsdraw(mode)
+  cls(scheme.bg)
+  mode.draw()
+end
+
+-->8
+-- bigint
+
+bigint = {}
+bigint._meta = {}
+
+function bigint._rem_0s(b)
+ local i = #b.coef
+ while i > 0 and b.coef[i] == 0 do
+  b.coef[i] = nil
+  i -= 1
+ end
+end
+
+function bigint._tokenise(s)
+ -- extract sign
+ local sign = true
+ if sub(s,1,1) == "-" then
+  s = sub(s,2)
+  sign = false
+ end
+
+ -- strip leading 0s
+ s = str_lstrip(s,"0")
+ sign = sign or #s == 0
+
+ -- strip , and terminate on .
+ local ns = ""
+ for i=1,#s do
+  local c = sub(s,i,i)
+  if c == "." then break
+  elseif c~="," then
+   ns ..= c
+  end
+ end
+ ns = str_divvy(str_reverse(ns), 2)
+ return sign,lmap(str_reverse,ns)
+end
+
+function bigint._add(b1,b2)
+ if #b1.coef < #b2.coef then
+  b1,b2 = b2, b1
+ end
+
+ b1 = deepcopy(b1) --bigint.copy(b1)
+
+ local carry,c1,c2 = 0, b1.coef, b2.coef
+ for i=1,#c1 do
+  carry, c1[i] =
+    divmod(c1[i]+c2[i]+carry,
+           100)
+  if carry == 0 and i >= #c2 then
+   break
+  end
+ end
+ if carry ~= 0 then
+  c1[#c1+1] += carry
+ end
+ return b1
+end
+
+function bigint._sub(b1, b2)
+ if b1 < b2 then
+  return -bigint._sub(b2,b1)
+ end
+
+ b1 = deepcopy(b1)
+
+ local carry,c1,c2 = 0, b1.coef, b2.coef
+ for i=1,#c1 do
+  carry, c1[i] =
+    divmod(c1[i]-c2[i]+carry,
+           100)
+  if carry == 0 and i >= #c2 then
+   break
+  end
+ end
+ if carry ~= 0 then
+  c1[#c2+1] += carry
+ end
+ -- remove leading 0s
+ bigint._rem_0s(b1)
+ return b1
+end
+
+function bigint._meta.__add(b1,b2)
+ b1 = bigint.as_bigint(b1)
+ b2 = bigint.as_bigint(b2)
+ if b1.sign and not b2.sign then
+  return b1-(-b2)
+ elseif b2.sign and not b1.sign then
+  return b2-(-b1)
+ end
+ return bigint._add(b1,b2)
+end
+
+function bigint._meta.__sub(b1, b2)
+ b1 = bigint.as_bigint(b1)
+ b2 = bigint.as_bigint(b2)
+ if b1.sign and not b2.sign then
+  return b1+(-b2)
+ elseif b2.sign and not b1.sign then
+  return -((-b1)+b2)
+ end
+ return bigint._sub(b1,b2)
+end
+
+-- better algorithms exist but
+-- i simply do not know them
+function bigint._meta.__mul(b1,b2)
+ b2 = bigint.as_bigint(b2)
+ b1 = deepcopy(b1) --bigint.copy(b1)
+ b1.sign = not xor(b1.sign,b2.sign)
+
+ local c1, c2 = b1.coef, b2.coef
+ local l1,l2=#c1,#c2
+ local lt = l1+l2
+ local x, carry
+
+ local buckets={}
+ for i=1,lt do
+  add(buckets,{})
+ end
+
+ for i=1,l1 do
+  for j=1,l2 do
+   carry,x = divmod(c1[i] * c2[j],100)
+   add(buckets[i+j-1],x)
+   add(buckets[i+j],carry)
+  end
+ end
+ for i=1,lt do
+  -- for very large numbers
+  -- the lack of divmod per
+  -- sum might cause overflow
+  x=0
+  for v in all(buckets[i]) do
+   x+=v
+  end
+  carry, c1[i] = divmod(x,100)
+  add(buckets[i+1],carry)
+ end
+ bigint._rem_0s(b1)
+ return b1
+end
+
+function bigint._meta.__pow(b,n)
+  acc = deepcopy(b) --bigint.copy(b)
+ for i=2,n do
+  acc *= b
+ end
+ return acc
+end
+
+function bigint._meta.__unm(b)
+ if #b.coef == 0 then
+  return b
+ end
+ b = deepcopy(b) --bigint.copy(b)
+ b.sign = not b.sign
+ return b
+end
+
+function bigint._meta.__eq(b1,b2)
+ return not (b1 < b2 or b2 < b1)
+end
+
+function bigint._meta.__lt(b1,b2)
+ b1 = bigint.as_bigint(b1)
+ b2 = bigint.as_bigint(b2)
+ if b1.sign != b2.sign then
+  return not b1.sign and b2.sign
+ end
+ local c1, c2 = b1.coef, b2.coef
+ if #c1 != #c2 then
+  return not xor(b1.sign,
+                 #c1 < #c2)
+ end
+ for i=#c1,1,-1 do
+  if c1[i] != c2[i] then
+   return
+     not xor(b1.sign,
+             c1[i]<c2[i])
+  end
+ end
+ return false
+end
+
+function bigint._meta.__concat(x,y)
+ return tostr(x)..tostr(y)
+end
+
+function bigint._meta.__tostring(b)
+ return bigint.tostr(b, true)
+end
+
+function bigint.tostr(b, commas)
+ if #b.coef == 0 then
+  return "0"
+ end
+ local start = #b.coef
+ local s = ""
+ -- build string from components
+ for i=start,1,-1 do
+  local ss = tostr(b.coef[i])
+  if #ss ~= 2 then
+   s ..= "0"
+  end
+  s ..= ss
+ end
+ -- remove leading 0s
+ s = str_lstrip(s,"0")
+
+ local ns
+ if commas then
+  -- add commas
+  ns = sub(s,-1,-1)
+  for i=2,#s do
+   if i % 3 == 1 then
+    ns ..= ","
+   end
+   ns ..= sub(s,-i,-i)
+  end
+ else
+  ns = str_reverse(s)
+ end
+
+ -- add negative
+ if not b.sign then
+  ns..="-"
+ end
+ return str_reverse(ns)
+end
+
+function bigint._new()
+ local b = {coef={}, sign=true}
+ setmetatable(b, bigint._meta)
+ setmetatable(b.coef,{
+  __index=function()return 0end})
+ return b
+end
+
+function bigint.new(s)
+ if type(s) == "number" then
+  s = tostr(s)
+ end
+ -- assert(#s > 0)
+
+ local ts
+ local b = bigint._new()
+ b.sign, ts = bigint._tokenise(s)
+ for i=1,#ts do
+  add(b.coef, tonum(ts[i]))
+ end
+ return b
+end
+
+function bigint.as_bigint(v)
+ if type(v) == "number" or
+    type(v) == "string" then
+  return bigint.new(v)
+ end
+ return v
+end
+
+log10_lookup = {
+  0.0, 0.3010299956639812, 0.47712125471966244, 0.6020599913279624, 0.6989700043360189, 0.7781512503836436, 0.8450980400142568, 0.9030899869919435, 0.9542425094393249
+}
+
+function poorlog10(b)
+ assert(b > 0)
+ local str = bigint.tostr(b)
+ return log10_lookup[tonum(sub(str, 1,1))] + #str - 1
+end
+
+-->8
+-- saving
+
+-- 256 bytes to play with
+-- bits [0,15): last_name
+-- bits [15,19]: setting flags
+
+-- bits [20, 63]: unused
+
+-- bytes [8,128): hiscore boards
+
+-- bytes [128,139): saved game
+-- - [128,136): board
+-- - [136,140): bucket
+--   - 4 bits for length
+--   - 26 bits for pieces
+--   - (13 x 2 bits each)
+--   - first piece is next piece
+
+-- bits [139*8 + 6, 140*8) unused
+
+-- bytes [140, 152) hi-card histogram
+
+-- byte 152: score history ring index
+-- bytes [153,256): saved scores ring buffer
+--  = 102 bytes
+-- each score is 8 bits fixed-point xxx.xxxxx log10
+-- so we get 102 scores
+
+
+board_start_byte=8
+max_boards=12
+bytes_per_board=10
+
+function load_data()
+ return {
+  settings=load_settings(),
+  last_name=load_last_name(),
+  boards = load_boards(),
+  saved_scores = load_scores()
+ }
+end
+
+function load_scores()
+ -- load scores for graph
+ return nil
+end
+
+function clear_save()
+ memset(store.addr+128,0,8)
+end
+
+function load_grid(start_byte)
+ local b = store.load_bytes(start_byte,8)
+ b = conv.unpack_bits(b,4,16)
+ if maximum(b) == 0 then
+  return nil
+ end
+ return conv.bytes2grid(b,4,4)
+end
+
+function load_game()
+ -- load current game
+ local grid = load_grid(128)
+ if not grid then
+  return nil, nil
+ end
+ local b = store.load_bytes(136,4)
+ local len = b[1] & 7
+ -- +3 for l(2) and np(1)
+ b = conv.unpack_bits(b,2,len+3)
+ b = lmap(function(x) return x+1 end,b)
+ -- ignore length
+ deli(b,1)
+ deli(b,1)
+ -- first piece is np
+ local np = deli(b,1)
+ return grid, np, b
+end
+
+function make_board(grid,name,save_slot)
+ return {
+  grid=grid,
+  score=calculate_score(grid),
+  max_val=maximum(grid),
+  name=name,
+  save_slot=save_slot
+ }
+end
+
+function cmp_score(a,b)
+ return a.score > b.score
+end
+
+function load_boards()
+ -- load high score boards
+ local boards = {}
+ for i=1,max_boards do
+  local sb = board_start_byte
+    + (i-1)*bytes_per_board
+  local grid = load_grid(sb)
+  if not grid then
+   break
+  end
+  add(boards, make_board(
+    grid,load_name(sb+8),i))
+ end
+ boards = sort(boards,cmp_score)
+
+ return boards
+end
+
+function load_settings()
+ local b = store.load_bytes(1,2)
+ local mus = b[1]&0x80==0
+ b = conv.unpack_bits({b[2]},1,4)
+ return {
+  music_on=mus,
+  sfx_on=b[1]==0,
+  night=b[2]==1,
+  autosign=b[3]==1,
+  boost=b[4]==1
+ }
+end
+
+function load_name(start_byte)
+ local b = store.load_bytes(start_byte, 2)
+ b = conv.unpack_bits(b,5,3)
+ return conv.bytes2str(b,enc.abc)
+end
+
+function load_last_name()
+ local s = load_name(0)
+ return s ~= "aaa" and s or nil
+end
+
+function bytes2grid(bytes, n, m)
+ local grid = {}
+ for j=1,n do
+  add(grid,{})
+  for i=1,m do
+   add(grid[j], bytes[(j-1)*m+i])
+  end
+ end
+ return grid
+end
+
+
+-- general purpose store library
+
+enc = {}
+conv = {}
+store = {
+ addr=0x5e00
+}
+enc.abc = {
+ chr = {[0]="a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z"," ",",",".",[["]],"?","!"},
+ ord = {}
+}
+
+function store.init()
+ cartdata("ones-data")
+
+ for _,encoding in pairs(enc) do
+  for c,i in pairs(encoding.chr) do
+   encoding.ord[i] = c
+  end
+ end
+end
+
+function conv.bool2byte(b)
+ return b==true and 1 or b==false and 0
+end
+
+function conv.pack_bits(bytes, n_bits)
+ local packed = {}
+ local mask = 2^n_bits - 1
+ local acc = 0
+ local bits_filled = 0
+ for byte in all(bytes) do
+  acc += (byte&mask)<<bits_filled
+  bits_filled += n_bits
+  if bits_filled >= 8 then
+   add(packed, acc & 0xff)
+   acc = (acc>>>8) & 0xff
+   bits_filled %= 8
+  end
+ end
+ if bits_filled > 0 then
+  add(packed, acc)
+ end
+ return packed
+end
+
+function conv.unpack_bits(packed, n_bits, n_bytes)
+ local bytes = {}
+ local mask = 2^n_bits-1
+ local j = 1
+ local acc = packed[j]
+ local bits_left = 8
+ for i=1,n_bytes do
+  local byte = acc & mask
+  acc >>>= n_bits
+  bits_left -= n_bits
+  if bits_left <= 0 then
+   local rmr = -bits_left
+   j += 1
+   acc = packed[j] or 0
+   byte+=(acc & (2^rmr-1))<<(n_bits-rmr)
+   acc >>>= rmr
+   bits_left = 8 - rmr
+  end
+  add(bytes, byte)
+ end
+ return bytes
+end
+
+function conv.str2bytes(str, encd)
+ encd = encd or enc.ascii
+ local bytes = {}
+ for i=1,#str do
+  add(bytes, encd.ord[sub(str,i,i)])
+ end
+ return bytes
+end
+
+function conv.bytes2str(bytes,encd)
+ encd = encd or enc.ascii
+ local str = ""
+ for b in all(bytes) do
+  str ..= encd.chr[b]
+ end
+ return str
+end
+function conv.bytes2grid(bytes, n, m)
+  local grid = {}
+  for j=1,n do
+    add(grid,{})
+    for i=1,m do
+      add(grid[j], bytes[(j-1)*m+i])
+    end
+  end
+  return grid
+end
+
+function store.save_bytes(bytes,start_byte)
+  for i=1,#bytes do
+    poke(store.addr + start_byte
+           + i - 1, bytes[i])
+  end
+end
+
+function store.load_byte(start_byte)
+ return store.load_bytes(start_byte, 1)[1]
+end
+
+function store.load_bytes(start_byte,n)
+ local bytes = {}
+ local last_byte = start_byte+n-1
+ -- assert(start_byte >= 0
+ --         and last_byte <= 0xff)
+ for i=start_byte,last_byte do
+   add(bytes,peek(store.addr+i))
+ end
+ return bytes
+end
+-->8
+-- easing
+
+ease = {i={},o={},io={}}
+
+function ease.i.quad(x)
+ return x*x
+end
+
+function ease.i.quart(x)
+ return x^4
+end
+
+function ease.i.elastic(x)
+ local c = 1 / 3
+
+ return x == 0 and 0 or
+       (x==1 and 1 or
+        -2^((x-1)*10) * -sin((x * 10 - 10.75) * c))
+end
+
+function join(f1,f2,x1)
+ x1 = x1 or .5
+ return function(x)
+  if x < x1 then
+   return f1(x/x1)/2
+  else
+   return .5+f2((x-x1)/(1-x1))/2
+  end
+ end
+end
+
+for name, fn in pairs(ease.i) do
+ ease.o[name] = function(x)
+  return 1 - fn(1-x)
+ end
+end
+ease.o.bounce, ease.i.bounce =
+  ease.i.bounce, ease.o.bounce
+
+for name, fn in pairs(ease.i) do
+ ease.io[name] =
+  join(fn, ease.o[name])
+end
+
+function tween(t, ease,
+  x0, x1, finish)
+ t = flr(t*30)-1
+ ease = ease or easelinear
+ x0 = x0 or 0
+ x1 = x1 or 1
+ return cocreate(function()
+  local i,d,finished=0,1,false
+  local v
+  while true do
+   if i <0 or i > t then
+    finished=true
+   end
+   v = i/t
+   yield({x0 + (x1-x0) * ease(v),
+          v,
+          finished})
+   i+=d
+   if i < 0 or i > t then
+    if finish=="reflect" then
+     d=-d
+     i+=d
+    elseif finish=="wrap" then
+     i=0
+    elseif finish=="stick" then
+     i=t
+    else
+     break
+    end
+   end
+  end
+ end)
+end
+
+function animate(t, ease,
+  x0, x1, fn, finish)
+ return cocreate(function()
+  local t = tween(t,ease,x0,x1,finish)
+  local _, v = coresume(t)
+  while coalive(t) do
+   fn(v[1])
+   yield(v[2])
+   _, v = coresume(t)
+  end
+ end)
+end
+function f (x)
+ print(((x << 3) & 0xff) >>>3)
+end
