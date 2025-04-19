@@ -362,11 +362,6 @@ function play.update()
  if btnp(5) then
   load("ones-stats.p8", "back to game")
  end
-
- if not play.drawn then
-  clsdraw(play)
-  play.drawn = true
- end
 end
 
 function clearwarn.init()
@@ -375,10 +370,6 @@ function clearwarn.init()
 end
 
 function clearwarn.update()
- if not clearwarn.drawn then
-   clsdraw(clearwarn)
-   clearwarn.drawn = true
- end
  if btnp(4) then
   transition.init(menu, clearwarn, 0, -1)
  elseif btnp(5) then
@@ -417,6 +408,12 @@ function _update()
  end
 
  mode.update()
+
+ if not mode.drawn and mode != transition then
+  cls(scheme.bg)
+  mode.draw()
+  mode.drawn = true
+ end
 end
 
 function _init()
@@ -1154,7 +1151,7 @@ function game_over.init()
 end
 
 function game_over.update()
- clsdraw(game_over)
+ game_over.drawn = false
 end
 
 function game_over.draw()
@@ -1235,14 +1232,9 @@ function titlescreen.init()
 end
 
 function titlescreen.update()
- if not titlescreen.drawn then
-   clsdraw(titlescreen)
-   titlescreen.drawn = true
- end
  if btnp(4) then
   menu.prior = titlescreen
   transition.init(menu, titlescreen, 0, 1)
-  --menu.init()
  elseif btnp(5) then
   load("ones-tut.p8", "back to title")
  elseif btnp(⬆️) then
@@ -1663,11 +1655,6 @@ function menu.init()
   menu.drawn = false
 end
 
-function clsdraw(mode)
-  cls(scheme.bg)
-  mode.draw()
-end
-
 function menu.draw()
  for i,panel in pairs(menu.panels) do
   draw_panel(panel,i,menu.panel_x)
@@ -1686,11 +1673,6 @@ function menu.draw()
 end
 
 function menu.update()
- if not menu.drawn then
-  clsdraw(menu)
-  menu.drawn = true
- end
-
  local blocked = false
  if menu.cam_anim then
   local _, pct =
@@ -1698,7 +1680,7 @@ function menu.update()
 
   if coalive(menu.cam_anim) then
    blocked = pct < 0.3
-   clsdraw(menu)
+   menu.drawn=false
   else
    menu.cam_anim = nil
   end
