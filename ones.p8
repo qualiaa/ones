@@ -824,8 +824,8 @@ function printr(s,x,y,c)
 end
 function print_border(s, x, y, c, sc)
  sc = sc or 0
- c = c or @0x5f25
  y = y or @0x5f27
+ c = c or @0x5f25
  local shift_cursor = false
  if x == nil then
   shift_cursor = true
@@ -1556,6 +1556,7 @@ function shift_panel(d)
   if menu.panels[panel]["title"] ~=
       menu.panels[menu.panel]["title"] then
    local cam = menu.cam_anim
+   menu.title_y=-20
    menu.cam_anim = cocreate(
     function()
      local a1, a2 = cam,
@@ -1690,7 +1691,6 @@ function menu.update()
     menu.panels[menu.panel].ui
 
   menu.panel_x = menu.panel * 90
-  --camera(menu.panel*90)
   if btnp(0) then
    shift_panel(-1)
   elseif btnp(1) then
