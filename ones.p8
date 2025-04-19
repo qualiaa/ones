@@ -216,7 +216,7 @@ function new_bucket(state)
  return b
 end
 
-tile_scores = {} --lmap(bigint.new, {
+tile_scores = {} --lmap(bigint_new, {
 -- filled in at bottom of cart!
 function score_tile(v)
  return v>2 and tile_scores[v] or 0
@@ -413,7 +413,7 @@ function _update()
 end
 
 function _init()
- store.init()
+ store_init()
  local loaded = load_data()
  data.last_name = loaded.last_name
  data.boards = loaded.boards
@@ -496,15 +496,15 @@ dark_scheme = --light_scheme
 scheme = dark_scheme
 
 function tile_col(v)
-  local c1,c2 = scheme.card_base,
-                scheme.card_shad
+  local _ENV = scheme
+  local c1,c2 = card_base, card_shad
   if v == 0 then
-    c1 = scheme.card_slot
+    c1 = card_slot
     c2 = c1
   elseif v == 1 then
-    c1,c2=scheme.blue, scheme.blue_shad
+    c1,c2=blue, blue_shad
   elseif v == 2 then
-    c1,c2=scheme.red, scheme.red_shad
+    c1,c2=red, red_shad
   end
   return c1, c2
 end
@@ -1340,7 +1340,7 @@ credits = {
    text="1 eejit made 1s!\njamiebayne.co.uk"
   }, {
    text="jamie bayne",
-   prefix="RIPPED OFF BY"
+   prefix="CLONED BY"
   }
  }
 }
@@ -1458,13 +1458,14 @@ function draw_text_back(x,y,rows)
 end
 
 function button_col(selected, on)
+ local _ENV = scheme
  if selected then
-  return scheme.blue, scheme.blue_shad
+  return blue, blue_shad
  end
  if on then
-  return scheme.red, scheme.red_shad
+  return red, red_shad
  end
- return scheme.btn_base, scheme.btn_shad
+ return btn_base, btn_shad
 end
 
 function draw_toggle(e,x,y,selected)
@@ -1493,7 +1494,7 @@ function draw_ui_grid(ui, index, enabled, panel_x)
  local x,y,dy = 30+x_off,40,14
  if ui.subtitle then
   print(ui.subtitle, x, y,
-        scheme.txt)
+        scheme.txt_col)
   y+=dy
  end
  local btn_index = 1
@@ -1717,9 +1718,9 @@ end
 -- bigint
 
 bigint = {}
-bigint._meta = {}
+bigint__meta = {}
 
-function bigint._rem_0s(b)
+function bigint__rem_0s(b)
  local i = #b.coef
  while i > 0 and b.coef[i] == 0 do
   b.coef[i] = nil
@@ -1727,7 +1728,7 @@ function bigint._rem_0s(b)
  end
 end
 
-function bigint._tokenise(s)
+function bigint__tokenise(s)
  -- extract sign
  local sign = true
  if sub(s,1,1) == "-" then
@@ -1752,12 +1753,12 @@ function bigint._tokenise(s)
  return sign,lmap(str_reverse,ns)
 end
 
-function bigint._add(b1,b2)
+function bigint__add(b1,b2)
  if #b1.coef < #b2.coef then
   b1,b2 = b2, b1
  end
 
- b1 = deepcopy(b1) --bigint.copy(b1)
+ b1 = deepcopy(b1) --bigint_copy(b1)
 
  local carry,c1,c2 = 0, b1.coef, b2.coef
  for i=1,#c1 do
@@ -1774,9 +1775,9 @@ function bigint._add(b1,b2)
  return b1
 end
 
-function bigint._sub(b1, b2)
+function bigint__sub(b1, b2)
  if b1 < b2 then
-  return -bigint._sub(b2,b1)
+  return -bigint__sub(b2,b1)
  end
 
  b1 = deepcopy(b1)
@@ -1794,37 +1795,37 @@ function bigint._sub(b1, b2)
   c1[#c2+1] += carry
  end
  -- remove leading 0s
- bigint._rem_0s(b1)
+ bigint__rem_0s(b1)
  return b1
 end
 
-function bigint._meta.__add(b1,b2)
- b1 = bigint.as_bigint(b1)
- b2 = bigint.as_bigint(b2)
+function bigint__meta.__add(b1,b2)
+ b1 = bigint_as_bigint(b1)
+ b2 = bigint_as_bigint(b2)
  if b1.sign and not b2.sign then
   return b1-(-b2)
  elseif b2.sign and not b1.sign then
   return b2-(-b1)
  end
- return bigint._add(b1,b2)
+ return bigint__add(b1,b2)
 end
 
-function bigint._meta.__sub(b1, b2)
- b1 = bigint.as_bigint(b1)
- b2 = bigint.as_bigint(b2)
+function bigint__meta.__sub(b1, b2)
+ b1 = bigint_as_bigint(b1)
+ b2 = bigint_as_bigint(b2)
  if b1.sign and not b2.sign then
   return b1+(-b2)
  elseif b2.sign and not b1.sign then
   return -((-b1)+b2)
  end
- return bigint._sub(b1,b2)
+ return bigint__sub(b1,b2)
 end
 
 -- better algorithms exist but
 -- i simply do not know them
-function bigint._meta.__mul(b1,b2)
- b2 = bigint.as_bigint(b2)
- b1 = deepcopy(b1) --bigint.copy(b1)
+function bigint__meta.__mul(b1,b2)
+ b2 = bigint_as_bigint(b2)
+ b1 = deepcopy(b1) --bigint_copy(b1)
  b1.sign = not xor(b1.sign,b2.sign)
 
  local c1, c2 = b1.coef, b2.coef
@@ -1855,34 +1856,34 @@ function bigint._meta.__mul(b1,b2)
   carry, c1[i] = divmod(x,100)
   add(buckets[i+1],carry)
  end
- bigint._rem_0s(b1)
+ bigint__rem_0s(b1)
  return b1
 end
 
-function bigint._meta.__pow(b,n)
-  acc = deepcopy(b) --bigint.copy(b)
+function bigint__meta.__pow(b,n)
+  acc = deepcopy(b) --bigint_copy(b)
  for i=2,n do
   acc *= b
  end
  return acc
 end
 
-function bigint._meta.__unm(b)
+function bigint__meta.__unm(b)
  if #b.coef == 0 then
   return b
  end
- b = deepcopy(b) --bigint.copy(b)
+ b = deepcopy(b) --bigint_copy(b)
  b.sign = not b.sign
  return b
 end
 
-function bigint._meta.__eq(b1,b2)
+function bigint__meta.__eq(b1,b2)
  return not (b1 < b2 or b2 < b1)
 end
 
-function bigint._meta.__lt(b1,b2)
- b1 = bigint.as_bigint(b1)
- b2 = bigint.as_bigint(b2)
+function bigint__meta.__lt(b1,b2)
+ b1 = bigint_as_bigint(b1)
+ b2 = bigint_as_bigint(b2)
  if b1.sign != b2.sign then
   return not b1.sign and b2.sign
  end
@@ -1901,15 +1902,15 @@ function bigint._meta.__lt(b1,b2)
  return false
 end
 
-function bigint._meta.__concat(x,y)
+function bigint__meta.__concat(x,y)
  return tostr(x)..tostr(y)
 end
 
-function bigint._meta.__tostring(b)
- return bigint.tostr(b, true)
+function bigint__meta.__tostring(b)
+ return bigint_tostr(b, true)
 end
 
-function bigint.tostr(b, commas)
+function bigint_tostr(b, commas)
  if #b.coef == 0 then
   return "0"
  end
@@ -1947,33 +1948,33 @@ function bigint.tostr(b, commas)
  return str_reverse(ns)
 end
 
-function bigint._new()
+function bigint__new()
  local b = {coef={}, sign=true}
- setmetatable(b, bigint._meta)
+ setmetatable(b, bigint__meta)
  setmetatable(b.coef,{
   __index=function()return 0end})
  return b
 end
 
-function bigint.new(s)
+function bigint_new(s)
  if type(s) == "number" then
   s = tostr(s)
  end
  -- assert(#s > 0)
 
  local ts
- local b = bigint._new()
- b.sign, ts = bigint._tokenise(s)
+ local b = bigint__new()
+ b.sign, ts = bigint__tokenise(s)
  for i=1,#ts do
   add(b.coef, tonum(ts[i]))
  end
  return b
 end
 
-function bigint.as_bigint(v)
+function bigint_as_bigint(v)
  if type(v) == "number" or
     type(v) == "string" then
-  return bigint.new(v)
+  return bigint_new(v)
  end
  return v
 end
@@ -1982,8 +1983,8 @@ function poorlog10(b)
  local lookup = {
    0.0, 0.3010299956639812, 0.47712125471966244, 0.6020599913279624, 0.6989700043360189, 0.7781512503836436, 0.8450980400142568, 0.9030899869919435, 0.9542425094393249
  }
- assert(b > 0)
- local str = bigint.tostr(b)
+ --assert(b > 0)
+ local str = bigint_tostr(b)
  return lookup[tonum(sub(str, 1,1))] + #str - 1
 end
 
@@ -2039,49 +2040,49 @@ end
 function clear_boards()
  -- clear high score boards
  data.boards = {}
- memset(store.addr+8,0,120)
- memset(store.addr+140,0,116)
+ memset(store_addr+8,0,120)
+ memset(store_addr+140,0,116)
 end
 
 function clear_save()
- memset(store.addr+128,0,8)
+ memset(store_addr+128,0,8)
 end
 
 function save_name(name, start_byte)
- local b = conv.str2bytes(name,enc.abc)
- b = conv.pack_bits(b,5)
+ local b = conv_str2bytes(name,enc.abc)
+ b = conv_pack_bits(b,5)
 
- local last = store.load_byte(start_byte+1)
+ local last = store_load_byte(start_byte+1)
  b[2] = (127&b[2]) + (last&(1<<7))
- store.save_bytes(b,start_byte)
+ store_save_bytes(b,start_byte)
 end
 
 function add_histogram(v)
  local p = 140 + mid(0,v-3,12)
- local n = store.load_byte(p)
- store.save_bytes({min(0xff, n + 1)}, p)
+ local n = store_load_byte(p)
+ store_save_bytes({min(0xff, n + 1)}, p)
 end
 
 function save_score(score)
- local i = store.load_byte(152)
+ local i = store_load_byte(152)
 
- store.save_bytes({(poorlog10(score) << 5) & 0xff}, 153 + i)
- store.save_bytes({(i+1) % 102}, 152)
+ store_save_bytes({(poorlog10(score) << 5) & 0xff}, 153 + i)
+ store_save_bytes({(i+1) % 102}, 152)
 end
 
 function save_grid(grid,start_byte)
  local b = grid2bytes(state.grid)
- b = conv.pack_bits(b,4)
- store.save_bytes(b, start_byte)
+ b = conv_pack_bits(b,4)
+ store_save_bytes(b, start_byte)
 end
 
 function load_grid(start_byte)
- local b = store.load_bytes(start_byte,8)
- b = conv.unpack_bits(b,4,16)
+ local b = store_load_bytes(start_byte,8)
+ b = conv_unpack_bits(b,4,16)
  if maximum(b) == 0 then
   return nil
  end
- return conv.bytes2grid(b,4,4)
+ return conv_bytes2grid(b,4,4)
 end
 
 function save_game()
@@ -2105,14 +2106,14 @@ function save_game()
  --       to shave tokens
  local b = lmap(function(x) return x-1 end,
    state.piece_bucket)
- b = conv.pack_bits(
+ b = conv_pack_bits(
    joinlists({
      -- flip endianness of #b bc im dum
      {#b & 3, (#b>>>2) & 3, np-1, deli(b, 1)},
      b
    }), 2)
 
- store.save_bytes(b, 136)
+ store_save_bytes(b, 136)
 end
 
 function load_game()
@@ -2121,10 +2122,10 @@ function load_game()
  if not grid then
   return nil, nil
  end
- local b = store.load_bytes(136,4)
+ local b = store_load_bytes(136,4)
  local len = b[1] & 15
  -- +3 for l(2) and np(1)
- b = conv.unpack_bits(b,2,len+3)
+ b = conv_unpack_bits(b,2,len+3)
  b = lmap(function(x) return x+1 end,b)
  -- ignore length
  deli(b,1)
@@ -2175,9 +2176,9 @@ function load_boards()
 end
 
 function load_settings()
- local b = store.load_bytes(1,2)
+ local b = store_load_bytes(1,2)
  local mus = b[1]&0x80==0
- b = conv.unpack_bits({b[2]},1,4)
+ b = conv_unpack_bits({b[2]},1,4)
  return {
   music_on=mus,
   sfx_on=b[1]==0,
@@ -2188,22 +2189,22 @@ function load_settings()
 end
 
 function save_settings()
- local b = store.load_bytes(1,2)
- b = conv.unpack_bits(b,1,16)
- local b2b = conv.bool2byte
+ local b = store_load_bytes(1,2)
+ b = conv_unpack_bits(b,1,16)
+ local b2b = conv_bool2byte
  b[8]  = b2b(not settings.music_on)
  b[9]  = b2b(not settings.sfx_on)
  b[10] = b2b(settings.night)
  b[11] = b2b(settings.autosign)
  b[12] = b2b(settings.boost)
- b = conv.pack_bits(b,1)
- store.save_bytes(b,1)
+ b = conv_pack_bits(b,1)
+ store_save_bytes(b,1)
 end
 
 function load_name(start_byte)
- local b = store.load_bytes(start_byte, 2)
- b = conv.unpack_bits(b,5,3)
- return conv.bytes2str(b,enc.abc)
+ local b = store_load_bytes(start_byte, 2)
+ b = conv_unpack_bits(b,5,3)
+ return conv_bytes2str(b,enc.abc)
 end
 
 function load_last_name()
@@ -2244,29 +2245,32 @@ end
 
 enc = {}
 conv = {}
-store = {
- addr=0x5e00
-}
+store_addr = 0x5e00
 enc.abc = {
- chr = {[0]="a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z"," ",",",".",[["]],"?","!"},
+ chr = {},
  ord = {}
 }
+_chr_str = "abcdefghijklmnopqrstuvwxyz ,.?!" .. [["]]
 
-function store.init()
+function store_init()
  cartdata("ones-data")
 
+ for i=1,#_chr_str do
+  enc.abc.chr[i-1] = sub(_chr_str,i,i)
+ end
+
  for _,encoding in pairs(enc) do
-  for c,i in pairs(encoding.chr) do
-   encoding.ord[i] = c
+  for i,c in pairs(encoding.chr) do
+   encoding.ord[c] = i
   end
  end
 end
 
-function conv.bool2byte(b)
+function conv_bool2byte(b)
  return b==true and 1 or b==false and 0
 end
 
-function conv.pack_bits(bytes, n_bits)
+function conv_pack_bits(bytes, n_bits)
  local packed = {}
  local mask = 2^n_bits - 1
  local acc = 0
@@ -2286,7 +2290,7 @@ function conv.pack_bits(bytes, n_bits)
  return packed
 end
 
-function conv.unpack_bits(packed, n_bits, n_bytes)
+function conv_unpack_bits(packed, n_bits, n_bytes)
  local bytes = {}
  local mask = 2^n_bits-1
  local j = 1
@@ -2309,7 +2313,7 @@ function conv.unpack_bits(packed, n_bits, n_bytes)
  return bytes
 end
 
-function conv.str2bytes(str, encd)
+function conv_str2bytes(str, encd)
  encd = encd or enc.ascii
  local bytes = {}
  for i=1,#str do
@@ -2318,7 +2322,7 @@ function conv.str2bytes(str, encd)
  return bytes
 end
 
-function conv.bytes2str(bytes,encd)
+function conv_bytes2str(bytes,encd)
  encd = encd or enc.ascii
  local str = ""
  for b in all(bytes) do
@@ -2326,7 +2330,7 @@ function conv.bytes2str(bytes,encd)
  end
  return str
 end
-function conv.bytes2grid(bytes, n, m)
+function conv_bytes2grid(bytes, n, m)
   local grid = {}
   for j=1,n do
     add(grid,{})
@@ -2337,24 +2341,24 @@ function conv.bytes2grid(bytes, n, m)
   return grid
 end
 
-function store.save_bytes(bytes,start_byte)
+function store_save_bytes(bytes,start_byte)
   for i=1,#bytes do
-    poke(store.addr + start_byte
+    poke(store_addr + start_byte
            + i - 1, bytes[i])
   end
 end
 
-function store.load_byte(start_byte)
- return store.load_bytes(start_byte, 1)[1]
+function store_load_byte(start_byte)
+ return store_load_bytes(start_byte, 1)[1]
 end
 
-function store.load_bytes(start_byte,n)
+function store_load_bytes(start_byte,n)
  local bytes = {}
  local last_byte = start_byte+n-1
  -- assert(start_byte >= 0
  --         and last_byte <= 0xff)
  for i=start_byte,last_byte do
-   add(bytes,peek(store.addr+i))
+   add(bytes,peek(store_addr+i))
  end
  return bytes
 end
@@ -2451,7 +2455,7 @@ function animate(t, ease,
 end
 
 for i=3,13 do
-  tile_scores[i] = bigint.new(3)^(i-2)
+  tile_scores[i] = bigint_new(3)^(i-2)
 end
 
 __label__
@@ -2714,4 +2718,3 @@ __music__
 00 41424344
 00 41424344
 02 41424344
-
