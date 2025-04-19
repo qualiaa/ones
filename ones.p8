@@ -316,8 +316,8 @@ function play.draw()
  else
    draw_grid(state.grid)
  end
- draw_top_buttons("MENU","▤",
-                  "STATS","∧")
+ draw_top_buttons("MENU","▤", btn(4),
+                  "STATS","∧", btn(5))
 end
 
 function play.update()
@@ -395,10 +395,10 @@ function clearwarn.draw()
  printc("are you sure?",64,title_y,scheme.txt)
 
  draw_long_boy({text="keep playing 🅾️"},
-   30,76,false)
+   30,76,false,btn(4))
 
  draw_long_boy({text="end game ❎"},
-   30,96,true)
+   30,96,true,btn(5))
 
  draw_ui_grid({{text="careful!\nyou will lose\nall progress on\nyour current board"}}, 0, true, 0)
 end
@@ -1244,14 +1244,14 @@ function titlescreen.update()
  end
 end
 
-function draw_top_buttons(l_txt,l_ico,r_txt,r_ico)
+function draw_top_buttons(l_txt,l_ico,l_press,r_txt,r_ico,r_press)
   local y = 15
-  draw_button(23,y,l_ico,
+  draw_button(23,y,l_ico,l_press,
               scheme.btn_base,
               scheme.btn_shad)
   print(l_txt,23,y+10,scheme.btn_base)
   if r_txt then
-   draw_button(93,y,r_ico,
+   draw_button(93,y,r_ico,r_press,
                scheme.btn_base,
                scheme.btn_shad)
    printr(r_txt,93+14,y+10,scheme.btn_base)
@@ -1268,8 +1268,8 @@ function titlescreen.draw()
  draw_long_boy({text="play ones ⬆️"},
    32,104,true)
 
- draw_top_buttons("MENU","▤",
-                  "LEARN",0)
+ draw_top_buttons("MENU","▤",btn(4),
+                  "LEARN",0,btn(5))
 end
 
 -->8
@@ -1432,10 +1432,11 @@ function draw_finished_board(board, x_off)
           scheme.frame_base)
 end
 
-function draw_button(x,y,i,c1,c2,long)
+function draw_button(x,y,i,pressed,c1,c2,long)
+ y += pressed and 1 or 0
  local w = long and 78 or 12
  rectfill(x,y,x+w,y+8,c1)
- line(x,y+9,x+w,y+9,c2)
+ if (not pressed) line(x,y+9,x+w,y+9,c2)
  if type(i) == "string" then
   if long then
     printc(i,x+w/2,y+2,scheme.btn_txt)
@@ -1474,7 +1475,7 @@ function button_col(selected, on)
  return btn_base, btn_shad
 end
 
-function draw_toggle(e,x,y,selected)
+function draw_toggle(e,x,y,selected,pressed)
  local c1, c2 = button_col(selected,
    settings[e.toggle])
  local ico=settings[e.toggle] and "/" or "x"
@@ -1485,12 +1486,12 @@ function draw_toggle(e,x,y,selected)
  print(e.text, x+8,y,
        scheme.txt)
  draw_button(x+59,y-3,
-             e.icon,c1,c2)
+             e.icon,pressed,c1,c2)
 end
 
-function draw_long_boy(e,x,y,selected)
+function draw_long_boy(e,x,y,selected,pressed)
  local c1,c2 = button_col(selected, true)
- draw_button(x-7,y,e.text,c1,c2,true,true)
+ draw_button(x-7,y,e.text,pressed,c1,c2,true)
 end
 
 function draw_ui_grid(ui, index, enabled, panel_x)
@@ -1506,10 +1507,13 @@ function draw_ui_grid(ui, index, enabled, panel_x)
  local btn_index = 1
  for e in all(ui) do
   if is_btn(e) then
+   local focus = ui.selected==btn_index
    local d = e.toggle
      and draw_toggle or draw_long_boy
    d(e,x,y,
-     enabled and ui.selected==btn_index)
+     enabled and focus,
+     enabled and btn(5) and focus
+   )
    btn_index += 1
   else
    if e.prefix then
@@ -1671,7 +1675,7 @@ function menu.draw()
  end
  draw_top_buttons(menu.prior == game_over
                    and "RETRY"
-                   or "BACK","⬅️")
+                   or "BACK","⬅️",btn(4))
 end
 
 function menu.update()
