@@ -1500,7 +1500,7 @@ function draw_ui_grid(ui, index, enabled, panel_x)
  local x,y,dy = 30+x_off,40,14
  if ui.subtitle then
   print(ui.subtitle, x, y,
-        scheme.txt_col)
+        scheme.txt)
   y+=dy
  end
  local btn_index = 1
