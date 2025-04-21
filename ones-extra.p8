@@ -151,7 +151,7 @@ function next_state(move, state)
      if state.next_pieces then
       return choose(state.next_pieces)
      end
-     -- special case for tutorial
+     -- special case for tut & title
      return 0
     end
     return v

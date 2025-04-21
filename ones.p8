@@ -147,9 +147,14 @@ end
 function next_state(move, state)
  local ng = mapgrid(
    function(i,j,v)
-    return (v == 0xf
-            and choose(state.next_pieces)
-            or v)
+    if v==0xf then
+     if state.next_pieces then
+      return choose(state.next_pieces)
+     end
+     -- special case for tut & title
+     return 0
+    end
+    return v
    end,
    state.moves[move].next_grid
  )
@@ -242,7 +247,7 @@ function make_state(grid, np, b)
  return {
   grid=grid,
   piece_bucket=b,
-  next_pieces=piece_from_np(np,mv),
+  next_pieces=np and piece_from_np(np,mv),
   moves=allowed_moves(grid),
   max_val=mv,
   finished=false
@@ -295,62 +300,12 @@ end
 
 function play.init()
  mode = play
- if not state or state.finished then
-  state = new_state()
-  save_game()
- end
+ game = make_game(true)
  play.drawn = false
- play.move = nil
- -- disable btnp repeating
- poke(0x5f5c, 255)
-end
-
-function play.draw()
- draw_next_pieces(state.next_pieces)
- if play.move then
-   draw_grid(state.grid,nil,
-             state.moves[play.move.btn].move_mask,
-             play.move.btn)
- else
-   draw_grid(state.grid)
- end
- draw_top_buttons("MENU","▤", btn(4),
-                  "STATS","∧", btn(5))
 end
 
 function play.update()
- local valid_moves = keys(state.moves)
- if #valid_moves == 0 then
-   game_over.init()
-   return
- end
-
- for move in all(valid_moves) do
-  if btnp(move)
-     and (not play.move
-          or move != play.move.btn)
-  then
-   play.move = {btn=move, t=t()}
-   break
-
-  elseif play.move
-    and play.move.btn == move
-  then
-   if btnp(play.move.btn) then
-    state =
-      next_state(move,state)
-    play.move = nil
-    slidesfx()
-    save_game()
-    break
-   elseif btn(play.move.btn) then
-    play.move.t = t()
-   elseif t() - play.move.t > 0.75 then
-    play.move = nil
-    play.drawn = false
-   end
-  end
- end
+ game_update()
 
  if btnp(4) then
   menu.prior = play
@@ -359,6 +314,77 @@ function play.update()
 
  if btnp(5) then
   load("ones-extra.p8", "back to game")
+ end
+end
+
+function play.draw()
+ game_draw()
+ draw_next_pieces(state.next_pieces)
+ draw_top_buttons("MENU","▤", btn(4),
+                  "STATS","∧", btn(5))
+end
+
+function make_game(saving)
+ if not state or state.finished then
+  state = new_state()
+  if saving then
+   save_game()
+  end
+ end
+ -- disable btnp repeating
+ poke(0x5f5c, 255)
+ return {
+  move=nil,
+  saving=saving
+ }
+end
+
+function game_draw()
+ local active_move = game.move
+ if active_move then
+  draw_grid(state.grid,nil,
+            state.moves[active_move.btn].move_mask,
+            active_move.btn)
+ else
+  draw_grid(state.grid)
+ end
+end
+
+function game_update()
+ local active_move = game.move
+ local valid_moves = keys(state.moves)
+ if #valid_moves == 0 then
+   game_over.init()
+   return
+ end
+
+ for move in all(valid_moves) do
+   if btnp(move)
+     and (not active_move
+          or move != active_move.btn)
+   then
+     game.move = {btn=move, t=t()}
+     break
+
+   elseif active_move
+     and active_move.btn == move
+   then
+     if btnp(active_move.btn) then
+       state =
+         next_state(move,state)
+       game.move = nil
+       slidesfx()
+       if game.saving then
+        save_game()
+       end
+       break
+     elseif btn(active_move.btn) then
+       active_move.t = t()
+     elseif t() - active_move.t > 0.75 then
+       game.move = nil
+       mode.drawn = false
+     end
+   end
  end
 end
 
@@ -392,21 +418,21 @@ end
 
 btn_state = {}
 function _update()
- if btn(0) and btn(1) and btn(2) and btn(3) then
-  for i=0,63 do
-   dset(i,0)
-  end
- end
+ --if btn(0) and btn(1) and btn(2) and btn(3) then
+ -- for i=0,63 do
+ --  dset(i,0)
+ -- end
+ --end
 
  for i=0,5 do
-  if btn_state[i] != btn(i) then
-   mode.drawn=false
-   btn_state[i] = btn(i)
-  end
+  if (btn_state[i] != btn(i)) mode.drawn=false
  end
 
  mode.update()
 
+ for i=0,5 do
+  btn_state[i] = btn(i)
+ end
  if not mode.drawn and mode != transition then
   cls(scheme.bg)
   mode.draw()
@@ -1221,26 +1247,56 @@ function titlescreen.init()
  mode = titlescreen
  titlescreen.drawn = false
 
- grid = make_grid(4,3)
+ local grid = make_grid(4,3)
  for i=3,max_ever_val() do
   k,j=divmod(i-3,4)
   grid[k+1][j+1]=i
  end
 
- titlescreen.grid = grid
+ state=make_state(grid, nil, {})
+
+ game=make_game(false)
 end
 
 function titlescreen.update()
+ game_update()
+ state.next_pieces = nil
  if btnp(4) then
   menu.prior = titlescreen
   transition.init(menu, titlescreen, 0, 1)
- elseif btnp(5) then
+
+ -- all this handles
+ -- play/tutorial
+ elseif btn(5) then
+  if btnp(5) then
+   btnsfx()
+   titlescreen.play_t = t()
+  elseif t() - titlescreen.play_t > 0.5 then
+   state = nil -- clear our game
+   play.init()
+  end
+ elseif btn_state[5] then
+  -- tutorial
   load("ones-extra.p8", "back to title")
- elseif btnp(⬆️) then
-  btnsfx()
-  play.init()
+ else
+  titlescreen.play_t=nil
  end
 end
+
+function titlescreen.draw()
+ print("o",55,title_y,scheme.red)
+ print("n",59,title_y,scheme.blue)
+ print("es!",63,title_y,scheme.txt)
+
+ game_draw()
+
+ draw_long_boy({text="hold ❎ to play"},
+   32,104,true,btn(5))
+
+ draw_top_buttons("MENU","▤",btn(4),
+                  "LEARN","\^:00495d4900000000",btn(5))
+end
+
 
 function draw_top_buttons(l_txt,l_ico,l_press,r_txt,r_ico,r_press)
   local y = 15
@@ -1254,20 +1310,6 @@ function draw_top_buttons(l_txt,l_ico,l_press,r_txt,r_ico,r_press)
                scheme.btn_shad)
    printr(r_txt,93+14,y+10,scheme.btn_base)
   end
-end
-
-function titlescreen.draw()
- print("o",55,title_y,scheme.red)
- print("n",59,title_y,scheme.blue)
- print("es!",63,title_y,scheme.txt)
-
- draw_grid(titlescreen.grid)
-
- draw_long_boy({text="play ones ⬆️"},
-   32,104,true)
-
- draw_top_buttons("MENU","▤",btn(4),
-                  "LEARN","\^:00495d4900000000",btn(5))
 end
 
 -->8
