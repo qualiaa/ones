@@ -392,7 +392,7 @@ function tutorial.init()
  tutorial.main_text = "\f8o\fcn" .. txtcol("es!")
  tutorial.bottom_text = "ANY ⬅️⬇️⬆️➡️ TO BEGIN"
  tutorial.print_main_text = function(s,y,c)print(s,55,y,c)end
- tutorial.extra_draw = {}
+ tutorial.extra_draw = nil
  tutorial.seq = cocreate(tutorial_sequence)
  coresume(tutorial.seq)
 end
@@ -402,6 +402,9 @@ function tutorial.update()
  if #valid_moves == 0 then
   coresume(tutorial.seq, btnp(0) or btnp(1) or btnp(2) or btnp(3))
   return
+ end
+ if tutorial.extra_draw then
+  mode.drawn = false
  end
 
  for move in all(valid_moves) do
@@ -433,8 +436,6 @@ function tutorial.update()
 end
 
 function tutorial.draw()
- --tutorial.print_main_text(tutorial.main_text)
- --draw_next_pieces(state.next_pieces)
  if mode.move then
   draw_grid(state.grid,nil,
             state.moves[mode.move.btn].move_mask,
@@ -443,8 +444,10 @@ function tutorial.draw()
   draw_grid(state.grid)
  end
 
- for _,f in pairs(tutorial.extra_draw) do
-  f()
+ if type(tutorial.extra_draw) == "function" then
+  tutorial.extra_draw()
+ elseif type(tutorial.extra_draw) == "thread" then
+  coresume(tutorial.extra_draw)
  end
 
  if tutorial.main_text then
@@ -504,16 +507,15 @@ function tutorial_sequence()
 
  track_move(yield())
 
+ tutorial.main_text = "rearrange numbers by\npushing 'em into walls"
+ tutorial.bottom_text = "⬅️⬇️⬆️➡️; MOVE EVERYBODY"
+
+ tutorial.extra_draw = draw_walls
+
  while abs(nx) < 2 and abs(ny) < 2 do
-  tutorial.main_text = "rEARRANGE NUMBERS BY\npushing 'em into walls"
-  tutorial.bottom_text = "⬅️⬇️⬆️➡️; MOVE EVERYBODY"
-
-  tutorial.extra_draw["walls"] = draw_walls
-
   state.next_pieces = nil
   track_move(yield())
  end
-
 
  tutorial.main_text = (
    "use the walls to add\n\fcblue"
@@ -522,15 +524,13 @@ function tutorial_sequence()
    .. txtcol(" together"))
  tutorial.bottom_text = nil
 
- add(tutorial.extra_draw, draw_walls)
-
  -- wait for move
  while maximum(state.grid) != 3 do
   state.next_pieces = nil
   yield()
  end
 
- deli(tutorial.extra_draw)
+ tutorial.extra_draw = nil
 
  tutorial.main_text = "auspicious!"
  tutorial.bottom_text = "MOVE ANYWHERE"
@@ -578,10 +578,6 @@ function tutorial_sequence()
   yield()
  end
 
- while maximum(state.grid) != 5 do
-  state.next_pieces = nil
-  yield()
- end
  tutorial.print_main_text = right_align_main
  tutorial.main_text = "fantastic!"
  tutorial.bottom_text = "MOVE ANYWHERE TO CONTINUE"
@@ -623,7 +619,6 @@ function tutorial_sequence()
   yield()
  end
 
-
  tutorial.print_main_text = right_align_main
  tutorial.main_text = "tHIS IS \f8o\fcn" .. txtcol("es!")
  tutorial.bottom_text = "MOVE TO KEEP GROWING!"
@@ -639,7 +634,16 @@ function tutorial_sequence()
 
  tutorial.main_text = nil
  tutorial.bottom_text = "LOOK UP TO SEE WHAT'S NEXT"
- -- todo: make the next tile start showing
+
+ tutorial.extra_draw = animate(
+  0.5,
+  ease.o.quart,
+  -40,0,
+  function(y)
+   camera(0,-y)
+   draw_next_pieces(state.next_pieces)
+   camera(0,0)
+  end, "stick")
 
  for i=1,4 do
   yield()
