@@ -259,34 +259,34 @@ clearwarn = {}
 transition = {}
 
 function transition.init(target, source, dx, dy)
-  btnsfx()
-  target.init()
-  transition.target = target
-  transition.source = source
-  transition.dx, transition.dy = dx, dy
-  transition.x, transition.y = 0, 0
-  transition.anim = animate(0.5,ease.o.quad,
-                            0,120,function(t)
-                              transition.x = t*dx
-                              transition.y = t*dy
-                            end)
-  mode = transition
+ btnsfx()
+ init_mode(target)
+ transition.target = target
+ transition.source = source
+ transition.dx, transition.dy = dx, dy
+ transition.x, transition.y = 0, 0
+ transition.anim = animate(0.5,ease.o.quad,
+                           0,120,function(t)
+                             transition.x = t*dx
+                             transition.y = t*dy
+                           end)
+ mode = transition
 end
 
 function transition.update()
-  cls(scheme.bg)
-  coresume(transition.anim)
-  if coalive(transition.anim) then
-    camera(transition.x, transition.y)
-    transition.source.draw()
-    camera(transition.x - 120 * transition.dx,
-           transition.y - 120 * transition.dy)
-    transition.target.draw()
-  else
-    camera()
-    transition.target.draw()
-    mode = transition.target
-  end
+ cls(scheme.bg)
+ coresume(transition.anim)
+ if coalive(transition.anim) then
+  camera(transition.x, transition.y)
+  transition.source.draw()
+  camera(transition.x - 120 * transition.dx,
+         transition.y - 120 * transition.dy)
+  transition.target.draw()
+ else
+  camera()
+  transition.target.draw()
+  mode = transition.target
+ end
 end
 
 function new_state()
@@ -299,9 +299,7 @@ end
 
 
 function play.init()
- mode = play
  game = make_game(true)
- play.drawn = false
 end
 
 function play.update()
@@ -354,8 +352,8 @@ function game_update()
  local active_move = game.move
  local valid_moves = keys(state.moves)
  if #valid_moves == 0 then
-   game_over.init()
-   return
+  init_mode(game_over)
+  return
  end
 
  for move in all(valid_moves) do
@@ -389,8 +387,6 @@ function game_update()
 end
 
 function clearwarn.init()
- mode = clearwarn
- clearwarn.drawn = false
 end
 
 function clearwarn.update()
@@ -440,6 +436,12 @@ function _update()
  end
 end
 
+function init_mode(new_mode)
+ mode = new_mode
+ mode.drawn = false
+ mode.init()
+end
+
 function _init()
  store_init()
  local loaded = load_data()
@@ -451,10 +453,10 @@ function _init()
 
  local grid, np, b = load_game()
  if grid then
-   state = make_state(grid, np, b)
-  play.init()
+  state = make_state(grid, np, b)
+  init_mode(play)
  else
-  titlescreen.init()
+  init_mode(titlescreen)
  end
 end
 
@@ -1172,7 +1174,6 @@ function game_over.init()
  game_over.name_prompt = nil
  game_over.score = calculate_score(state.grid)
  game_over.complete = false
- mode = game_over
 end
 
 function game_over.update()
@@ -1244,8 +1245,6 @@ title_y = 20
 titlescreen = {}
 
 function titlescreen.init()
- mode = titlescreen
- titlescreen.drawn = false
 
  local grid = make_grid(4,3)
  for i=3,max_ever_val() do
@@ -1273,7 +1272,7 @@ function titlescreen.update()
    titlescreen.play_t = t()
   elseif t() - titlescreen.play_t > 0.5 then
    state = nil -- clear our game
-   play.init()
+   init_mode(play)
   end
  elseif btn_state[5] then
   -- tutorial
@@ -1688,9 +1687,7 @@ function menu.init()
     p.ui = p.ui or {}
     p.ui.selected = 1
   end
-  mode = menu
   menu.panel_x = menu.panel*panel_width
-  menu.drawn = false
 end
 
 function menu.draw()
