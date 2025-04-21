@@ -559,6 +559,7 @@ function draw_next_pieces(pieces)
  for i, p in ipairs(pieces) do
   draw_tile((w-width)/2+(i-1)*tw,8,p)
  end
+ printc("NEXT", 65, 8+tw+2, scheme.btn_base)
 end
 
 function grid_pos(i, j)
