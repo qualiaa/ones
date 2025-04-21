@@ -1236,7 +1236,7 @@ function titlescreen.update()
   menu.prior = titlescreen
   transition.init(menu, titlescreen, 0, 1)
  elseif btnp(5) then
-  load("ones-tut.p8", "back to title")
+  load("ones-stats.p8", "back to title")
  elseif btnp(⬆️) then
   btnsfx()
   play.init()

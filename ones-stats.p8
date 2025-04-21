@@ -1,14 +1,69 @@
 pico-8 cartridge // http://www.pico-8.com
 version 42
 __lua__
--- game logic
+-- ones extra screens
+-- by QUALIA
 --------------
--- ones stats screen
--- by qualia
+
+-- game logic
 --------------
 
 gw, gh = 4, 4
 
+function not3(v)
+ return v == 1 or v == 2
+end
+
+function can_merge(a,b)
+ if a == 0 or b == 0 then
+  return false
+ elseif not3(a) and not3(b) then
+  return a != b
+ else
+  return a == b
+ end
+end
+
+function merge(a,b)
+ if can_merge(a,b) then
+  if not3(a) then
+    return 3
+  else return a+1
+  end
+ else return a
+ end
+end
+
+function slide_pieces_left(old_row)
+ local new_row = deepcopy(old_row)
+ local move_mask = {false}
+
+ for i=2,#old_row do
+  local val = old_row[i]
+  new_row[i] = 0
+  move_mask[i] = val ~= 0
+
+  local left_val = new_row[i-1]
+  if left_val == 0 then
+   new_row[i-1] = val
+  elseif can_merge(left_val,val) then
+   new_row[i-1] = merge(left_val, val)
+  else
+   move_mask[i] = false
+   new_row[i] = val
+  end
+ end
+
+ return new_row, move_mask
+end
+
+function next_pieces(state)
+ np, nb = bucket(state.piece_bucket)
+ if #nb == 0 then
+  nb = new_bucket(state)
+ end
+ return np, nb
+end
 
 function bonus_piece(max_val)
  pieces={}
@@ -24,6 +79,98 @@ function piece_from_np(np,max_val)
   return bonus_piece(max_val)
  end
  return min(np,3)
+end
+
+function move_outcome(move, g)
+ local ng = {}
+ local move_mask = {}
+
+ if is_vertical(move) then
+  g = transpose(g)
+ end
+ if move % 2 == 1 then
+  g = lmap(reverse, g)
+ end
+
+ local candidate_rows={}
+
+ for j=1,#g do
+  local row, row_move_mask =
+   slide_pieces_left(g[j])
+  add(move_mask, row_move_mask)
+  add(ng,row)
+  if any(row_move_mask) then
+   add(candidate_rows,row)
+  end
+ end
+
+ if #candidate_rows ~= 0 then
+  choose(candidate_rows)[#candidate_rows[1]]
+    = 0xf -- sentinel for new piece
+ end
+
+ if move % 2 == 1 then
+  ng        = lmap(reverse, ng)
+  move_mask = lmap(reverse, move_mask)
+ end
+ if is_vertical(move) then
+  ng        = transpose(ng)
+  move_mask = transpose(move_mask)
+ end
+
+ return ng, move_mask
+end
+
+function is_vertical(move)
+ return move >= 2
+end
+
+function allowed_moves(grid)
+ -- 0: left
+ -- 1: right
+ -- 2: up
+ -- 3: down
+ local moves={}
+ for move=0,3 do
+  local ng, mask =
+    move_outcome(move, grid)
+  if any(lmap(any, mask)) then
+   moves[move] = {
+     next_grid=ng,
+     move_mask=mask
+   }
+  end
+ end
+ return moves
+end
+
+function next_state(move, state)
+ local ng = mapgrid(
+   function(i,j,v)
+    if v==0xf then
+     if state.next_pieces then
+      return choose(state.next_pieces)
+     end
+     -- special case for tutorial
+     return 0
+    end
+    return v
+   end,
+   state.moves[move].next_grid
+ )
+
+ local max_val = maximum(ng)
+
+ local np, nb = next_pieces(state)
+
+ return {grid=ng,
+         next_pieces=
+           piece_from_np(
+            np,
+            max_val),
+         piece_bucket=nb,
+         moves=allowed_moves(ng),
+         max_val=max_val}
 end
 
 function make_grid(w,h)
@@ -66,6 +213,14 @@ function init_board(w,h,b)
  return grid, b
 end
 
+function new_bucket(state)
+ local b = base_bucket()
+ if rndint(3) < 2 and state.max_val > 3 then
+  add(b,4) -- 4 = sentinel for bonus piece
+ end
+ return b
+end
+
 function score_tile(v)
  return v>2 and bigint.new(3)^(v-2) or 0
 end
@@ -93,7 +248,7 @@ function make_state(grid, np, b)
   grid=grid,
   piece_bucket=b,
   next_pieces=piece_from_np(np,mv),
-  moves=nil,
+  moves=allowed_moves(grid),
   max_val=mv,
   finished=false
  }
@@ -203,8 +358,310 @@ function _init()
   mode.draw()
   transition.init(stats, mode, 1, 0)
  else
-  assert(false)
+  tutorial.init()
+  mode.draw()
  end
+end
+
+-->8
+-- tutorial
+
+tutorial = {}
+
+function tohexdigit(n)
+ assert(0 <= n and n < 16)
+ if n < 10 then
+  return tostr(n)
+ end
+ return sub("abcdef", n-9,n-9)
+end
+
+function txtcol(s)
+ return "\f" .. tohexdigit(scheme.txt) .. s
+end
+
+function tutorial.init()
+ mode = tutorial
+ tutorial.drawn = false
+
+ play.drawn = false
+ play.move = nil
+ -- disable btnp repeating
+ poke(0x5f5c, 255)
+
+ tutorial.main_text = "\f8o\fcn" .. txtcol("es!")
+ tutorial.bottom_text = "ANY ⬅️⬇️⬆️➡️ TO BEGIN"
+ tutorial.print_main_text = function(s,y,c)print(s,55,y,c)end
+ tutorial.extra_draw = {}
+ tutorial.seq = cocreate(tutorial_sequence)
+ coresume(tutorial.seq)
+end
+
+function tutorial.update()
+ local valid_moves = keys(state.moves)
+ if #valid_moves == 0 then
+  coresume(tutorial.seq, btnp(0) or btnp(1) or btnp(2) or btnp(3))
+  return
+ end
+
+ for move in all(valid_moves) do
+  if btnp(move)
+    and (not mode.move
+         or move != mode.move.btn)
+  then
+   mode.move = {btn=move, t=t()}
+   break
+
+  elseif mode.move
+   and mode.move.btn == move
+  then
+   if btnp(mode.move.btn) then
+    state =
+      next_state(move,state)
+    slidesfx()
+    coresume(tutorial.seq, mode.move.btn)
+    mode.move = nil
+    break
+   elseif btn(mode.move.btn) then
+    mode.move.t = t()
+   elseif t() - mode.move.t > 0.75 then
+    mode.move = nil
+    mode.drawn = false
+   end
+  end
+ end
+end
+
+function tutorial.draw()
+ --tutorial.print_main_text(tutorial.main_text)
+ --draw_next_pieces(state.next_pieces)
+ if mode.move then
+  draw_grid(state.grid,nil,
+            state.moves[mode.move.btn].move_mask,
+            mode.move.btn)
+ else
+  draw_grid(state.grid)
+ end
+
+ for _,f in pairs(tutorial.extra_draw) do
+  f()
+ end
+
+ if tutorial.main_text then
+  tutorial.print_main_text(tutorial.main_text,title_y,scheme.txt)
+ end
+ if tutorial.bottom_text then
+  printc(tutorial.bottom_text,64,112,scheme.txt)
+ end
+end
+
+function right_align_main(s,y,c)
+ printr(s,107,y,c)
+end
+
+function center_align_main(s,y,c)
+ printc(s,64,y,c)
+end
+
+
+function tutorial_sequence()
+ grid = make_grid(4,4)
+ state = {
+  grid=grid,
+  piece_bucket={},
+  next_pieces=nil,
+  moves={},
+  max_val=0,
+  finished=false
+ }
+
+ yield()
+ -- wait for arrow key
+ while not yield() do end
+
+
+ local red, blue = "\f8red", "\fcblue"
+ local nx, ny = 0, 0
+ function track_move(btn)
+  local dx, dy = move2dirs(btn)
+  nx += dx
+  ny += dy
+ end
+
+ state.grid[2][2] = 1
+ state.grid[3][3] = 2
+ state.moves=allowed_moves(state.grid)
+
+ tutorial.main_text = "meet ".. blue .. txtcol(" & ") .. red
+ tutorial.print_main_text = right_align_main
+ tutorial.bottom_text = "DOUBLE ⬅️⬇️⬆️➡️\nTO MOVE THEM"
+
+ -- wait for move
+ track_move(yield())
+
+ tutorial.main_text = "⬅️⬇️⬆️➡️;\nmove everybody"
+ tutorial.bottom_text = nil
+
+ track_move(yield())
+
+ while abs(nx) < 2 and abs(ny) < 2 do
+  tutorial.main_text = "rEARRANGE NUMBERS BY\npushing 'em into walls"
+  tutorial.bottom_text = "⬅️⬇️⬆️➡️; MOVE EVERYBODY"
+
+  tutorial.extra_draw["walls"] = draw_walls
+
+  state.next_pieces = nil
+  track_move(yield())
+ end
+
+
+ tutorial.main_text = (
+   "use the walls to add\n\fcblue"
+   .. txtcol(" & ")
+   .. red
+   .. txtcol(" together"))
+ tutorial.bottom_text = nil
+
+ add(tutorial.extra_draw, draw_walls)
+
+ -- wait for move
+ while maximum(state.grid) != 3 do
+  state.next_pieces = nil
+  yield()
+ end
+
+ deli(tutorial.extra_draw)
+
+ tutorial.main_text = "auspicious!"
+ tutorial.bottom_text = "MOVE ANYWHERE"
+ state.next_pieces = nil
+
+ yield()
+
+ tutorial.main_text = "new numbers appear \nwhen you move cards!"
+ state.next_pieces = 3
+
+ yield()
+
+ tutorial.print_main_text = center_align_main
+ tutorial.main_text = "1 + 1 = 2"
+ tutorial.bottom_text = nil
+
+
+ while maximum(state.grid) != 4 do
+  state.next_pieces = nil
+  yield()
+ end
+
+ tutorial.print_main_text = right_align_main
+ tutorial.main_text = "you're getting it!"
+
+ state.next_pieces = 3
+ yield()
+
+ tutorial.print_main_text = center_align_main
+ tutorial.main_text = "numbers 1 and higher\nwill only add together\n\f8if they are twins."
+
+ for i=1,3 do
+  state.next_pieces = nil
+  yield()
+ end
+ state.next_pieces = 3
+ yield()
+
+ tutorial.bottom_text = "CREATE A 3 TO CONTINUE"
+
+ state.next_pieces = 3
+ yield()
+ while maximum(state.grid) != 5 do
+  state.next_pieces = nil
+  yield()
+ end
+
+ while maximum(state.grid) != 5 do
+  state.next_pieces = nil
+  yield()
+ end
+ tutorial.print_main_text = right_align_main
+ tutorial.main_text = "fantastic!"
+ tutorial.bottom_text = "MOVE ANYWHERE TO CONTINUE"
+
+ state.next_pieces = 1
+ yield()
+ tutorial.bottom_text = nil
+
+ tutorial.print_main_text = center_align_main
+ tutorial.main_text = (
+   blue .. txtcol(" WILL only ADD WITH ") .. red)
+
+ for i=1,3 do
+  state.next_pieces = 1
+  yield()
+ end
+
+ state.next_pieces = 2
+ yield()
+ tutorial.main_text = (
+   red .. txtcol(" WILL only ADD WITH ") .. blue)
+
+ for i=1,4 do
+  state.next_pieces = 2
+  yield()
+ end
+ state.next_pieces = 1
+ yield()
+
+ tutorial.print_main_text = center_align_main
+ tutorial.main_text = "make a 4!"
+
+ while maximum(state.grid) != 6 do
+  local occupied = 0
+  mapgrid(function(i,j,v) if (v != 0) occupied += 1 end, state.grid)
+  if occupied > 8 then
+   state.next_pieces = nil
+  end
+  yield()
+ end
+
+
+ tutorial.print_main_text = right_align_main
+ tutorial.main_text = "tHIS IS \f8o\fcn" .. txtcol("es!")
+ tutorial.bottom_text = "MOVE TO KEEP GROWING!"
+
+ yield()
+
+ tutorial.print_main_text = center_align_main
+ tutorial.main_text = "make the highest\nnumber you can!"
+
+ tutorial.bottom_text = "THAT'S THE GOAL OF THE GAME"
+
+ yield()
+
+ tutorial.main_text = nil
+ tutorial.bottom_text = "LOOK UP TO SEE WHAT'S NEXT"
+ -- todo: make the next tile start showing
+
+ for i=1,4 do
+  yield()
+ end
+
+ tutorial.bottom_text = "IT'S OVER WHEN\nTHE BOARD FILLS UP"
+
+ yield()
+
+ tutorial.bottom_text = "HOLD A DIRECTION\nTO SEE THE FUTURE "
+
+ yield()
+
+ save_game()
+ load("ones.p8")
+end
+
+function draw_walls()
+ rect(29,39,99,109,8)
+ rect(28,38,100,110,8)
+ print("w\na\nl\nl",22,70,8)
+ print("w\na\nl\nl",104,50,8)
 end
 
 -->8
@@ -641,7 +1098,7 @@ dark_scheme = {
  bg=1, --1/0
  grid_base=0, --5/1/0
  card_slot=1,
- txt=6, --6/5
+ txt=13, --6/5
  score_txt=7,
  tile_score=7,
  stats_txt=7,
@@ -874,6 +1331,28 @@ function maximum(t)
  return res
 end
 
+function choose(t)
+ if type(t) == "number" then
+  return t
+ end
+ local i = rndint(#t)
+ return t[i]
+end
+
+function bucket(b)
+ b = deepcopy(b)
+ local choice = choose(b)
+ return del(b,choice), b
+end
+
+function rndint(s,e)
+ if e == nil then
+  e = s
+  s = 1
+ end
+ return flr(rnd(e-s+1)) + s
+end
+
 function sort(t, cmp)
  cmp = cmp or function(a,b) return a<b end
  t = shallowcopy(t)
@@ -897,15 +1376,26 @@ function joinlists(lists)
  return result
 end
 
+function text_width(s)
+ local l = print(s,0,200)
+ return l
+end
+
 function printc(s,x,y,c)
  y = y-- or @0x5f27
  c = c-- or @0x5f25
- print(s,x-2*#s,y,c)
+ for i, line in pairs(str_split(s,"\n")) do
+  print(line,x-text_width(line)\2,y,c)
+  y += 6
+ end
 end
 function printr(s,x,y,c)
  y = y-- or @0x5f27
  c = c-- or @0x5f25
- print(s,x-4*#s,y,c)
+ for i, line in pairs(str_split(s,"\n")) do
+  print(line,x-text_width(line),y,c)
+  y += 6
+ end
 end
 function print_border(s, x, y, c, sc)
  sc = sc or 0
@@ -968,6 +1458,24 @@ function str_lstrip(s,ss)
   start+=1
  end
  return sub(s,start)
+end
+
+function str_split(s,d)
+ local result = {}
+ while #s do
+  for i=1,#s do
+   if sub(s,i,i) == d then
+    add(result,sub(s,1,i-1))
+    s = sub(s,i+1,#s)
+    break
+   elseif i == #s then
+    goto split_done
+   end
+  end
+ end
+ ::split_done::
+ add(result,s)
+ return result
 end
 
 function lmap(f,l)
@@ -1038,37 +1546,10 @@ function titlescreen.draw()
    32,104,true)
 
  draw_top_buttons("MENU","▤",btn(4),
-                  "LEARN",0,btn(5))
+                  "LEARN","\^:00495d4900000000",btn(5))
 end
 
 -->8
--- menu
-
-menu = {}
--- useful symbols:
---  credits/thanks ★
---  stats ∧
---  🅾️❎⬅️⬇️⬆️➡️
---  thanks ♥
---  home/title ⌂
---  loading ⧗
---  웃☉ˇ🐱
---  music ♪
---  on/off ☉🅾️❎◆
-
-panel_width = 90
-
-back_button = {
- icon="❎"
-}
-
-titlescreen_button = {
- text="main menu",
- action=function()
-  transition.init(clearwarn, menu, 0, 1)
- end
-}
-
 function apply_settings()
  scheme = settings.night
    and dark_scheme or light_scheme
@@ -1455,6 +1936,37 @@ function load_grid(start_byte)
  return conv_bytes2grid(b,4,4)
 end
 
+function save_game()
+ -- save the current game
+  -- board + bucket
+ -- (total 11 bytes):
+ -- board: 8 bytes (16 * 4 bits)
+ save_grid(state.grid,128)
+ -- now save bucket
+ -- 4 bits for length
+ -- 26 bits for pieces
+ -- (13 pieces, 2 bits per piece)
+ -- total 4 bytes
+ local np = state.next_pieces
+ if type(np) == "table" then
+  np = 4
+ end
+
+ -- todo: shift bucket -1
+ --       and np -1
+ --       to shave tokens
+ local b = lmap(function(x) return x-1 end,
+   state.piece_bucket)
+ b = conv_pack_bits(
+   joinlists({
+     -- flip endianness of #b bc im dum
+     {#b & 3, (#b>>>2) & 3, np-1, deli(b, 1)},
+     b
+   }), 2)
+
+ store_save_bytes(b, 136)
+end
+
 function load_game()
  -- load current game
  local grid = load_grid(128)
@@ -1472,6 +1984,14 @@ function load_game()
  -- first piece is np
  local np = deli(b,1)
  return grid, np, b
+end
+
+function save_board(board)
+ local sb = board_start_byte
+    + (board.save_slot-1)
+      * bytes_per_board
+ save_grid(board.grid,sb)
+ save_name(board.name,sb+8)
 end
 
 function make_board(grid,name,save_slot)
@@ -1528,6 +2048,10 @@ end
 function load_last_name()
  local s = load_name(0)
  return s ~= "aaa" and s or nil
+end
+
+function grid2bytes(grid)
+ return joinlists(grid)
 end
 
 function bytes2grid(bytes, n, m)
