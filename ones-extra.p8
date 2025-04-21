@@ -222,7 +222,7 @@ function new_bucket(state)
 end
 
 function score_tile(v)
- return v>2 and bigint.new(3)^(v-2) or 0
+ return v>2 and bigint_new(3)^(v-2) or 0
 end
 
 function calculate_score(grid)

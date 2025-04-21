@@ -1,6 +1,6 @@
 -- game logic
 --------------
--- ones stats screen
+-- ones extra screens
 -- by qualia
 --------------
 

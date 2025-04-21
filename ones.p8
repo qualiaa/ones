@@ -358,7 +358,7 @@ function play.update()
  end
 
  if btnp(5) then
-  load("ones-stats.p8", "back to game")
+  load("ones-extra.p8", "back to game")
  end
 end
 
@@ -1234,7 +1234,7 @@ function titlescreen.update()
   menu.prior = titlescreen
   transition.init(menu, titlescreen, 0, 1)
  elseif btnp(5) then
-  load("ones-stats.p8", "back to title")
+  load("ones-extra.p8", "back to title")
  elseif btnp(⬆️) then
   btnsfx()
   play.init()
