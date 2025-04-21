@@ -1566,14 +1566,10 @@ function draw_button(x,y,i,pressed,c1,c2,long)
  local w = long and 78 or 12
  rectfill(x,y,x+w,y+8,c1)
  if (not pressed) line(x,y+9,x+w,y+9,c2)
- if type(i) == "string" then
-  if long then
-    printc(i,x+w/2,y+2,scheme.btn_txt)
-  else
-    print(i,x+3,y+2,scheme.btn_txt)
-  end
+ if long then
+   printc(i,x+w/2,y+2,scheme.btn_txt)
  else
-  spr(i,x+2,y+1)
+   print(i,x+3,y+2,scheme.btn_txt)
  end
 end
 
