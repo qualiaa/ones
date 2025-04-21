@@ -329,8 +329,6 @@ function make_game(saving)
    save_game()
   end
  end
- -- disable btnp repeating
- poke(0x5f5c, 255)
  return {
   move=nil,
   saving=saving
@@ -443,6 +441,8 @@ function init_mode(new_mode)
 end
 
 function _init()
+ -- disable btnp repeating
+ poke(0x5f5c, 255)
  store_init()
  local loaded = load_data()
  data.last_name = loaded.last_name
@@ -1245,6 +1245,8 @@ title_y = 20
 titlescreen = {}
 
 function titlescreen.init()
+ titlescreen.play_t = nil
+
  titlescreen.has_game = max_ever_val() > 2
  if (not titlescreen.has_game) return
 
@@ -1273,17 +1275,17 @@ function titlescreen.update()
  -- play/tutorial
  elseif btn(5) then
   if btnp(5) then
+   -- just pressed; wait to see
    btnsfx()
    titlescreen.play_t = t()
-  elseif t() - titlescreen.play_t > 0.5 then
+  elseif titlescreen.play_t and t() - titlescreen.play_t > 0.5 then
+   -- start new game
    state = nil -- clear our game
    init_mode(play)
   end
- elseif btn_state[5] then
-  -- tutorial
+ elseif titlescreen.play_t and btn_state[5] then
+  -- start tutorial
   load("ones-extra.p8", "back to title")
- else
-  titlescreen.play_t=nil
  end
 end
 
