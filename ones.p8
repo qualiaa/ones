@@ -532,7 +532,7 @@ function draw_tile(x,y,v,mv)
  local c1,c2 = tile_col(v)
  local tc = tile_txt_col(v,mv)
  local x1,x2 = x+4, x+13
- local y_mid = y + (v < 11 and 11 or 10)
+ local y_mid = y + 12 - tonum(v >= 6) - tonum(v >= 11)
  rectfill(x1,y+2,x2,y_mid,c1)
  rectfill(x1,y_mid+1,x2,y+13,c2)
 
