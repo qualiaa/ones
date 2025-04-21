@@ -492,7 +492,7 @@ dark_scheme = --light_scheme
  bg=1, --1/0
  grid_base=0, --5/1/0
  card_slot=1,
- txt=6, --6/5
+ txt=13, --6/5
  score_txt=7,
  tile_score=7,
 }
