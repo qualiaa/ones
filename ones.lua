@@ -144,9 +144,14 @@ end
 function next_state(move, state)
  local ng = mapgrid(
    function(i,j,v)
-    return (v == 0xf
-            and choose(state.next_pieces)
-            or v)
+    if v==0xf then
+     if state.next_pieces then
+      return choose(state.next_pieces)
+     end
+     -- special case for tut & title
+     return 0
+    end
+    return v
    end,
    state.moves[move].next_grid
  )
@@ -213,10 +218,8 @@ function new_bucket(state)
  return b
 end
 
-tile_scores = {} --lmap(bigint.new, {
--- filled in at bottom of cart!
 function score_tile(v)
- return v>2 and tile_scores[v] or 0
+ return v>2 and bigint_new(3)^(v-2) or 0
 end
 
 function calculate_score(grid)
@@ -241,7 +244,7 @@ function make_state(grid, np, b)
  return {
   grid=grid,
   piece_bucket=b,
-  next_pieces=piece_from_np(np,mv),
+  next_pieces=np and piece_from_np(np,mv),
   moves=allowed_moves(grid),
   max_val=mv,
   finished=false
@@ -253,34 +256,34 @@ clearwarn = {}
 transition = {}
 
 function transition.init(target, source, dx, dy)
-  btnsfx()
-  target.init()
-  transition.target = target
-  transition.source = source
-  transition.dx, transition.dy = dx, dy
-  transition.x, transition.y = 0, 0
-  transition.anim = animate(0.5,ease.o.quad,
-                            0,120,function(t)
-                              transition.x = t*dx
-                              transition.y = t*dy
-                            end)
-  mode = transition
+ btnsfx()
+ init_mode(target)
+ transition.target = target
+ transition.source = source
+ transition.dx, transition.dy = dx, dy
+ transition.x, transition.y = 0, 0
+ transition.anim = animate(0.5,ease.o.quad,
+                           0,120,function(t)
+                             transition.x = t*dx
+                             transition.y = t*dy
+                           end)
+ mode = transition
 end
 
 function transition.update()
-  cls(scheme.bg)
-  coresume(transition.anim)
-  if coalive(transition.anim) then
-    camera(transition.x, transition.y)
-    transition.source.draw()
-    camera(transition.x - 120 * transition.dx,
-           transition.y - 120 * transition.dy)
-    transition.target.draw()
-  else
-    camera()
-    transition.target.draw()
-    mode = transition.target
-  end
+ cls(scheme.bg)
+ coresume(transition.anim)
+ if coalive(transition.anim) then
+  camera(transition.x, transition.y)
+  transition.source.draw()
+  camera(transition.x - 120 * transition.dx,
+         transition.y - 120 * transition.dy)
+  transition.target.draw()
+ else
+  camera()
+  transition.target.draw()
+  mode = transition.target
+ end
 end
 
 function new_state()
@@ -293,65 +296,11 @@ end
 
 
 function play.init()
- mode = play
- if not state or state.finished then
-  state = new_state()
-  save_game()
- end
- play.drawn = false
- play.move = nil
- -- disable btnp repeating
- poke(0x5f5c, 255)
-end
-
-function play.draw()
- draw_next_pieces(state.next_pieces)
- if play.move then
-   draw_grid(state.grid,nil,
-             state.moves[play.move.btn].move_mask,
-             play.move.btn)
- else
-   draw_grid(state.grid)
- end
- draw_top_buttons("MENU","▤",
-                  "STATS","∧")
+ game = make_game(true)
 end
 
 function play.update()
-  local valid_moves = keys(state.moves)
-  if #valid_moves == 0 then
-    game_over.init()
-    return
-  end
-
-  for move in all(valid_moves) do
-    if btnp(move)
-      and (not play.move
-           or move != play.move.btn)
-  then
-   play.move = {btn=move, t=t()}
-   play.drawn = false
-   break
-
-  elseif play.move
-    and play.move.btn == move
-  then
-   if btnp(play.move.btn) then
-    state =
-      next_state(move,state)
-    play.move = nil
-    play.drawn = false
-    slidesfx()
-    save_game()
-    break
-   elseif btn(play.move.btn) then
-    play.move.t = t()
-   elseif t() - play.move.t > 0.75 then
-    play.move = nil
-    play.drawn = false
-   end
-  end
- end
+ game_update()
 
  if btnp(4) then
   menu.prior = play
@@ -359,25 +308,83 @@ function play.update()
  end
 
  if btnp(5) then
-  load("ones-stats.p8", "back to game")
+  load("ones-extra.p8", "back to game")
+ end
+end
+
+function play.draw()
+ game_draw()
+ draw_next_pieces(state.next_pieces)
+ draw_top_buttons("MENU","▤", btn(4),
+                  "STATS","∧", btn(5))
+end
+
+function make_game(saving)
+ if not state or state.finished then
+  state = new_state()
+  if saving then
+   save_game()
+  end
+ end
+ return {
+  move=nil,
+  saving=saving
+ }
+end
+
+function game_draw()
+ local active_move = game.move
+ if active_move then
+  draw_grid(state.grid,nil,
+            state.moves[active_move.btn].move_mask,
+            active_move.btn)
+ else
+  draw_grid(state.grid)
+ end
+end
+
+function game_update()
+ local active_move = game.move
+ local valid_moves = keys(state.moves)
+ if #valid_moves == 0 then
+  init_mode(game_over)
+  return
  end
 
- if not play.drawn then
-  clsdraw(play)
-  play.drawn = true
+ for move in all(valid_moves) do
+   if btnp(move)
+     and (not active_move
+          or move != active_move.btn)
+   then
+     game.move = {btn=move, t=t()}
+     break
+
+   elseif active_move
+     and active_move.btn == move
+   then
+     if btnp(active_move.btn) then
+       state =
+         next_state(move,state)
+       game.move = nil
+       slidesfx()
+       if game.saving then
+        save_game()
+       end
+       break
+     elseif btn(active_move.btn) then
+       active_move.t = t()
+     elseif t() - active_move.t > 0.75 then
+       game.move = nil
+       mode.drawn = false
+     end
+   end
  end
 end
 
 function clearwarn.init()
- mode = clearwarn
- clearwarn.drawn = false
 end
 
 function clearwarn.update()
- if not clearwarn.drawn then
-   clsdraw(clearwarn)
-   clearwarn.drawn = true
- end
  if btnp(4) then
   transition.init(menu, clearwarn, 0, -1)
  elseif btnp(5) then
@@ -392,25 +399,48 @@ function clearwarn.draw()
  printc("are you sure?",64,title_y,scheme.txt)
 
  draw_long_boy({text="keep playing 🅾️"},
-   30,76,false)
+   30,76,false,btn(4))
 
  draw_long_boy({text="end game ❎"},
-   30,96,true)
+   30,96,true,btn(5))
 
  draw_ui_grid({{text="careful!\nyou will lose\nall progress on\nyour current board"}}, 0, true, 0)
 end
 
+btn_state = {}
 function _update()
- if btn(0) and btn(1) and btn(2) and btn(3) then
-  for i=0,63 do
-   dset(i,0)
-  end
+ --if btn(0) and btn(1) and btn(2) and btn(3) then
+ -- for i=0,63 do
+ --  dset(i,0)
+ -- end
+ --end
+
+ for i=0,5 do
+  if (btn_state[i] != btn(i)) mode.drawn=false
  end
+
  mode.update()
+
+ for i=0,5 do
+  btn_state[i] = btn(i)
+ end
+ if not mode.drawn and mode != transition then
+  cls(scheme.bg)
+  mode.draw()
+  mode.drawn = true
+ end
+end
+
+function init_mode(new_mode)
+ mode = new_mode
+ mode.drawn = false
+ mode.init()
 end
 
 function _init()
- store.init()
+ -- disable btnp repeating
+ poke(0x5f5c, 255)
+ store_init()
  local loaded = load_data()
  data.last_name = loaded.last_name
  data.boards = loaded.boards
@@ -420,10 +450,10 @@ function _init()
 
  local grid, np, b = load_game()
  if grid then
-   state = make_state(grid, np, b)
-  play.init()
+  state = make_state(grid, np, b)
+  init_mode(play)
  else
-  titlescreen.init()
+  init_mode(titlescreen)
  end
 end
 
@@ -485,7 +515,7 @@ dark_scheme = --light_scheme
  bg=1, --1/0
  grid_base=0, --5/1/0
  card_slot=1,
- txt=6, --6/5
+ txt=13, --6/5
  score_txt=7,
  tile_score=7,
 }
@@ -493,15 +523,15 @@ dark_scheme = --light_scheme
 scheme = dark_scheme
 
 function tile_col(v)
-  local c1,c2 = scheme.card_base,
-                scheme.card_shad
+  local _ENV = scheme
+  local c1,c2 = card_base, card_shad
   if v == 0 then
-    c1 = scheme.card_slot
+    c1 = card_slot
     c2 = c1
   elseif v == 1 then
-    c1,c2=scheme.blue, scheme.blue_shad
+    c1,c2=blue, blue_shad
   elseif v == 2 then
-    c1,c2=scheme.red, scheme.red_shad
+    c1,c2=red, red_shad
   end
   return c1, c2
 end
@@ -527,7 +557,7 @@ function draw_tile(x,y,v,mv)
  local c1,c2 = tile_col(v)
  local tc = tile_txt_col(v,mv)
  local x1,x2 = x+4, x+13
- local y_mid = y + (v < 11 and 11 or 10)
+ local y_mid = y + 12 - tonum(v >= 6) - tonum(v >= 11)
  rectfill(x1,y+2,x2,y_mid,c1)
  rectfill(x1,y_mid+1,x2,y+13,c2)
 
@@ -554,6 +584,7 @@ function draw_next_pieces(pieces)
  for i, p in ipairs(pieces) do
   draw_tile((w-width)/2+(i-1)*tw,8,p)
  end
+ printc("NEXT", 65, 8+tw+2, scheme.btn_base)
 end
 
 function grid_pos(i, j)
@@ -817,8 +848,8 @@ function printr(s,x,y,c)
 end
 function print_border(s, x, y, c, sc)
  sc = sc or 0
- c = c or @0x5f25
  y = y or @0x5f27
+ c = c or @0x5f25
  local shift_cursor = false
  if x == nil then
   shift_cursor = true
@@ -1140,11 +1171,10 @@ function game_over.init()
  game_over.name_prompt = nil
  game_over.score = calculate_score(state.grid)
  game_over.complete = false
- mode = game_over
 end
 
 function game_over.update()
- clsdraw(game_over)
+ game_over.drawn = false
 end
 
 function game_over.draw()
@@ -1212,45 +1242,48 @@ title_y = 20
 titlescreen = {}
 
 function titlescreen.init()
- mode = titlescreen
- titlescreen.drawn = false
+ titlescreen.play_t = nil
 
- grid = make_grid(4,3)
+ titlescreen.has_game = max_ever_val() > 2
+ if (not titlescreen.has_game) return
+
+ local grid = make_grid(4,3)
  for i=3,max_ever_val() do
   k,j=divmod(i-3,4)
   grid[k+1][j+1]=i
  end
 
- titlescreen.grid = grid
+ state=make_state(grid, nil, {})
+
+ game=make_game(false)
 end
 
 function titlescreen.update()
- if not titlescreen.drawn then
-   clsdraw(titlescreen)
-   titlescreen.drawn = true
+ if titlescreen.has_game then
+  game_update()
+  state.next_pieces = nil
  end
+
  if btnp(4) then
   menu.prior = titlescreen
   transition.init(menu, titlescreen, 0, 1)
-  --menu.init()
- elseif btnp(5) then
-  btnsfx()
-  play.init()
- end
-end
 
-function draw_top_buttons(l_txt,l_ico,r_txt,r_ico)
-  local y = 15
-  draw_button(23,y,l_ico,
-              scheme.btn_base,
-              scheme.btn_shad)
-  print(l_txt,23,y+10,scheme.btn_base)
-  if r_txt then
-   draw_button(93,y,r_ico,
-               scheme.btn_base,
-               scheme.btn_shad)
-   printr(r_txt,93+14,y+10,scheme.btn_base)
+ -- all this handles
+ -- play/tutorial
+ elseif btn(5) then
+  if btnp(5) then
+   -- just pressed; wait to see
+   btnsfx()
+   titlescreen.play_t = t()
+  elseif titlescreen.play_t and t() - titlescreen.play_t > 0.5 then
+   -- start new game
+   state = nil -- clear our game
+   init_mode(play)
   end
+ elseif titlescreen.play_t and btn_state[5] then
+  -- start tutorial
+  load("ones-extra.p8", "back to title")
+ end
 end
 
 function titlescreen.draw()
@@ -1258,13 +1291,28 @@ function titlescreen.draw()
  print("n",59,title_y,scheme.blue)
  print("es!",63,title_y,scheme.txt)
 
- draw_grid(titlescreen.grid)
+ if titlescreen.has_game then game_draw() end
 
- draw_long_boy({text="play ones ❎"},
-   32,104,true)
+ draw_long_boy({text="hold ❎ to play"},
+   32,104,true,btn(5))
 
- draw_top_buttons("MENU","▤",
-                  "PLAY","❎")
+ draw_top_buttons("MENU","▤",btn(4),
+                  "LEARN","\^:00495d4900000000",btn(5))
+end
+
+
+function draw_top_buttons(l_txt,l_ico,l_press,r_txt,r_ico,r_press)
+  local y = 15
+  draw_button(23,y,l_ico,l_press,
+              scheme.btn_base,
+              scheme.btn_shad)
+  print(l_txt,23,y+10,scheme.btn_base)
+  if r_txt then
+   draw_button(93,y,r_ico,r_press,
+               scheme.btn_base,
+               scheme.btn_shad)
+   printr(r_txt,93+14,y+10,scheme.btn_base)
+  end
 end
 
 -->8
@@ -1337,7 +1385,7 @@ credits = {
    text="1 eejit made 1s!\njamiebayne.co.uk"
   }, {
    text="jamie bayne",
-   prefix="RIPPED OFF BY"
+   prefix="CLONED BY"
   }
  }
 }
@@ -1427,10 +1475,11 @@ function draw_finished_board(board, x_off)
           scheme.frame_base)
 end
 
-function draw_button(x,y,i,c1,c2,long)
+function draw_button(x,y,i,pressed,c1,c2,long)
+ y += pressed and 1 or 0
  local w = long and 78 or 12
  rectfill(x,y,x+w,y+8,c1)
- line(x,y+9,x+w,y+9,c2)
+ if (not pressed) line(x,y+9,x+w,y+9,c2)
  if long then
    printc(i,x+w/2,y+2,scheme.btn_txt)
  else
@@ -1455,16 +1504,17 @@ function draw_text_back(x,y,rows)
 end
 
 function button_col(selected, on)
+ local _ENV = scheme
  if selected then
-  return scheme.blue, scheme.blue_shad
+  return blue, blue_shad
  end
  if on then
-  return scheme.red, scheme.red_shad
+  return red, red_shad
  end
- return scheme.btn_base, scheme.btn_shad
+ return btn_base, btn_shad
 end
 
-function draw_toggle(e,x,y,selected)
+function draw_toggle(e,x,y,selected,pressed)
  local c1, c2 = button_col(selected,
    settings[e.toggle])
  local ico=settings[e.toggle] and "/" or "x"
@@ -1475,12 +1525,12 @@ function draw_toggle(e,x,y,selected)
  print(e.text, x+8,y,
        scheme.txt)
  draw_button(x+59,y-3,
-             e.icon,c1,c2)
+             e.icon,pressed,c1,c2)
 end
 
-function draw_long_boy(e,x,y,selected)
+function draw_long_boy(e,x,y,selected,pressed)
  local c1,c2 = button_col(selected, true)
- draw_button(x-7,y,e.text,c1,c2,true,true)
+ draw_button(x-7,y,e.text,pressed,c1,c2,true)
 end
 
 function draw_ui_grid(ui, index, enabled, panel_x)
@@ -1496,10 +1546,13 @@ function draw_ui_grid(ui, index, enabled, panel_x)
  local btn_index = 1
  for e in all(ui) do
   if is_btn(e) then
+   local focus = ui.selected==btn_index
    local d = e.toggle
      and draw_toggle or draw_long_boy
    d(e,x,y,
-     enabled and ui.selected==btn_index)
+     enabled and focus,
+     enabled and btn(5) and focus
+   )
    btn_index += 1
   else
    if e.prefix then
@@ -1543,6 +1596,7 @@ function shift_panel(d)
   if menu.panels[panel]["title"] ~=
       menu.panels[menu.panel]["title"] then
    local cam = menu.cam_anim
+   menu.title_y=-20
    menu.cam_anim = cocreate(
     function()
      local a1, a2 = cam,
@@ -1637,14 +1691,7 @@ function menu.init()
     p.ui = p.ui or {}
     p.ui.selected = 1
   end
-  mode = menu
   menu.panel_x = menu.panel*panel_width
-  menu.drawn = false
-end
-
-function clsdraw(mode)
-  cls(scheme.bg)
-  mode.draw()
 end
 
 function menu.draw()
@@ -1661,15 +1708,10 @@ function menu.draw()
  end
  draw_top_buttons(menu.prior == game_over
                    and "RETRY"
-                   or "BACK","⬅️")
+                   or "BACK","⬅️",btn(4))
 end
 
 function menu.update()
- if not menu.drawn then
-  clsdraw(menu)
-  menu.drawn = true
- end
-
  local blocked = false
  if menu.cam_anim then
   local _, pct =
@@ -1677,7 +1719,7 @@ function menu.update()
 
   if coalive(menu.cam_anim) then
    blocked = pct < 0.3
-   clsdraw(menu)
+   menu.drawn=false
   else
    menu.cam_anim = nil
   end
@@ -1687,17 +1729,14 @@ function menu.update()
     menu.panels[menu.panel].ui
 
   menu.panel_x = menu.panel * 90
-  --camera(menu.panel*90)
   if btnp(0) then
    shift_panel(-1)
   elseif btnp(1) then
    shift_panel(1)
   elseif btnp(2) then
    shift_selection(cur_ui,-1)
-   clsdraw(menu)
   elseif btnp(3) then
    shift_selection(cur_ui,1)
-   clsdraw(menu)
   elseif btnp(4) then
    if menu.prior==game_over then
     transition.init(play, menu, 0, -1)
@@ -1706,7 +1745,6 @@ function menu.update()
    end
   elseif btnp(5) then
     press_button(cur_ui)
-    clsdraw(menu)
   end
  end
 end
@@ -1714,9 +1752,9 @@ end
 -- bigint
 
 bigint = {}
-bigint._meta = {}
+bigint__meta = {}
 
-function bigint._rem_0s(b)
+function bigint__rem_0s(b)
  local i = #b.coef
  while i > 0 and b.coef[i] == 0 do
   b.coef[i] = nil
@@ -1724,7 +1762,7 @@ function bigint._rem_0s(b)
  end
 end
 
-function bigint._tokenise(s)
+function bigint__tokenise(s)
  -- extract sign
  local sign = true
  if sub(s,1,1) == "-" then
@@ -1749,12 +1787,12 @@ function bigint._tokenise(s)
  return sign,lmap(str_reverse,ns)
 end
 
-function bigint._add(b1,b2)
+function bigint__add(b1,b2)
  if #b1.coef < #b2.coef then
   b1,b2 = b2, b1
  end
 
- b1 = deepcopy(b1) --bigint.copy(b1)
+ b1 = deepcopy(b1) --bigint_copy(b1)
 
  local carry,c1,c2 = 0, b1.coef, b2.coef
  for i=1,#c1 do
@@ -1771,9 +1809,9 @@ function bigint._add(b1,b2)
  return b1
 end
 
-function bigint._sub(b1, b2)
+function bigint__sub(b1, b2)
  if b1 < b2 then
-  return -bigint._sub(b2,b1)
+  return -bigint__sub(b2,b1)
  end
 
  b1 = deepcopy(b1)
@@ -1791,37 +1829,37 @@ function bigint._sub(b1, b2)
   c1[#c2+1] += carry
  end
  -- remove leading 0s
- bigint._rem_0s(b1)
+ bigint__rem_0s(b1)
  return b1
 end
 
-function bigint._meta.__add(b1,b2)
- b1 = bigint.as_bigint(b1)
- b2 = bigint.as_bigint(b2)
+function bigint__meta.__add(b1,b2)
+ b1 = bigint_as_bigint(b1)
+ b2 = bigint_as_bigint(b2)
  if b1.sign and not b2.sign then
   return b1-(-b2)
  elseif b2.sign and not b1.sign then
   return b2-(-b1)
  end
- return bigint._add(b1,b2)
+ return bigint__add(b1,b2)
 end
 
-function bigint._meta.__sub(b1, b2)
- b1 = bigint.as_bigint(b1)
- b2 = bigint.as_bigint(b2)
+function bigint__meta.__sub(b1, b2)
+ b1 = bigint_as_bigint(b1)
+ b2 = bigint_as_bigint(b2)
  if b1.sign and not b2.sign then
   return b1+(-b2)
  elseif b2.sign and not b1.sign then
   return -((-b1)+b2)
  end
- return bigint._sub(b1,b2)
+ return bigint__sub(b1,b2)
 end
 
 -- better algorithms exist but
 -- i simply do not know them
-function bigint._meta.__mul(b1,b2)
- b2 = bigint.as_bigint(b2)
- b1 = deepcopy(b1) --bigint.copy(b1)
+function bigint__meta.__mul(b1,b2)
+ b2 = bigint_as_bigint(b2)
+ b1 = deepcopy(b1) --bigint_copy(b1)
  b1.sign = not xor(b1.sign,b2.sign)
 
  local c1, c2 = b1.coef, b2.coef
@@ -1852,34 +1890,34 @@ function bigint._meta.__mul(b1,b2)
   carry, c1[i] = divmod(x,100)
   add(buckets[i+1],carry)
  end
- bigint._rem_0s(b1)
+ bigint__rem_0s(b1)
  return b1
 end
 
-function bigint._meta.__pow(b,n)
-  acc = deepcopy(b) --bigint.copy(b)
+function bigint__meta.__pow(b,n)
+  acc = deepcopy(b) --bigint_copy(b)
  for i=2,n do
   acc *= b
  end
  return acc
 end
 
-function bigint._meta.__unm(b)
+function bigint__meta.__unm(b)
  if #b.coef == 0 then
   return b
  end
- b = deepcopy(b) --bigint.copy(b)
+ b = deepcopy(b) --bigint_copy(b)
  b.sign = not b.sign
  return b
 end
 
-function bigint._meta.__eq(b1,b2)
+function bigint__meta.__eq(b1,b2)
  return not (b1 < b2 or b2 < b1)
 end
 
-function bigint._meta.__lt(b1,b2)
- b1 = bigint.as_bigint(b1)
- b2 = bigint.as_bigint(b2)
+function bigint__meta.__lt(b1,b2)
+ b1 = bigint_as_bigint(b1)
+ b2 = bigint_as_bigint(b2)
  if b1.sign != b2.sign then
   return not b1.sign and b2.sign
  end
@@ -1898,15 +1936,15 @@ function bigint._meta.__lt(b1,b2)
  return false
 end
 
-function bigint._meta.__concat(x,y)
+function bigint__meta.__concat(x,y)
  return tostr(x)..tostr(y)
 end
 
-function bigint._meta.__tostring(b)
- return bigint.tostr(b, true)
+function bigint__meta.__tostring(b)
+ return bigint_tostr(b, true)
 end
 
-function bigint.tostr(b, commas)
+function bigint_tostr(b, commas)
  if #b.coef == 0 then
   return "0"
  end
@@ -1944,33 +1982,33 @@ function bigint.tostr(b, commas)
  return str_reverse(ns)
 end
 
-function bigint._new()
+function bigint__new()
  local b = {coef={}, sign=true}
- setmetatable(b, bigint._meta)
+ setmetatable(b, bigint__meta)
  setmetatable(b.coef,{
   __index=function()return 0end})
  return b
 end
 
-function bigint.new(s)
+function bigint_new(s)
  if type(s) == "number" then
   s = tostr(s)
  end
  -- assert(#s > 0)
 
  local ts
- local b = bigint._new()
- b.sign, ts = bigint._tokenise(s)
+ local b = bigint__new()
+ b.sign, ts = bigint__tokenise(s)
  for i=1,#ts do
   add(b.coef, tonum(ts[i]))
  end
  return b
 end
 
-function bigint.as_bigint(v)
+function bigint_as_bigint(v)
  if type(v) == "number" or
     type(v) == "string" then
-  return bigint.new(v)
+  return bigint_new(v)
  end
  return v
 end
@@ -1979,8 +2017,8 @@ function poorlog10(b)
  local lookup = {
    0.0, 0.3010299956639812, 0.47712125471966244, 0.6020599913279624, 0.6989700043360189, 0.7781512503836436, 0.8450980400142568, 0.9030899869919435, 0.9542425094393249
  }
- assert(b > 0)
- local str = bigint.tostr(b)
+ --assert(b > 0)
+ local str = bigint_tostr(b)
  return lookup[tonum(sub(str, 1,1))] + #str - 1
 end
 
@@ -2036,49 +2074,49 @@ end
 function clear_boards()
  -- clear high score boards
  data.boards = {}
- memset(store.addr+8,0,120)
- memset(store.addr+140,0,116)
+ memset(store_addr+8,0,120)
+ memset(store_addr+140,0,116)
 end
 
 function clear_save()
- memset(store.addr+128,0,8)
+ memset(store_addr+128,0,8)
 end
 
 function save_name(name, start_byte)
- local b = conv.str2bytes(name,enc.abc)
- b = conv.pack_bits(b,5)
+ local b = conv_str2bytes(name,enc.abc)
+ b = conv_pack_bits(b,5)
 
- local last = store.load_byte(start_byte+1)
+ local last = store_load_byte(start_byte+1)
  b[2] = (127&b[2]) + (last&(1<<7))
- store.save_bytes(b,start_byte)
+ store_save_bytes(b,start_byte)
 end
 
 function add_histogram(v)
  local p = 140 + mid(0,v-3,12)
- local n = store.load_byte(p)
- store.save_bytes({min(0xff, n + 1)}, p)
+ local n = store_load_byte(p)
+ store_save_bytes({min(0xff, n + 1)}, p)
 end
 
 function save_score(score)
- local i = store.load_byte(152)
+ local i = store_load_byte(152)
 
- store.save_bytes({(poorlog10(score) << 5) & 0xff}, 153 + i)
- store.save_bytes({(i+1) % 102}, 152)
+ store_save_bytes({(poorlog10(score) << 5) & 0xff}, 153 + i)
+ store_save_bytes({(i+1) % 102}, 152)
 end
 
 function save_grid(grid,start_byte)
  local b = grid2bytes(state.grid)
- b = conv.pack_bits(b,4)
- store.save_bytes(b, start_byte)
+ b = conv_pack_bits(b,4)
+ store_save_bytes(b, start_byte)
 end
 
 function load_grid(start_byte)
- local b = store.load_bytes(start_byte,8)
- b = conv.unpack_bits(b,4,16)
+ local b = store_load_bytes(start_byte,8)
+ b = conv_unpack_bits(b,4,16)
  if maximum(b) == 0 then
   return nil
  end
- return conv.bytes2grid(b,4,4)
+ return conv_bytes2grid(b,4,4)
 end
 
 function save_game()
@@ -2102,14 +2140,14 @@ function save_game()
  --       to shave tokens
  local b = lmap(function(x) return x-1 end,
    state.piece_bucket)
- b = conv.pack_bits(
+ b = conv_pack_bits(
    joinlists({
      -- flip endianness of #b bc im dum
      {#b & 3, (#b>>>2) & 3, np-1, deli(b, 1)},
      b
    }), 2)
 
- store.save_bytes(b, 136)
+ store_save_bytes(b, 136)
 end
 
 function load_game()
@@ -2118,10 +2156,10 @@ function load_game()
  if not grid then
   return nil, nil
  end
- local b = store.load_bytes(136,4)
+ local b = store_load_bytes(136,4)
  local len = b[1] & 15
  -- +3 for l(2) and np(1)
- b = conv.unpack_bits(b,2,len+3)
+ b = conv_unpack_bits(b,2,len+3)
  b = lmap(function(x) return x+1 end,b)
  -- ignore length
  deli(b,1)
@@ -2172,9 +2210,9 @@ function load_boards()
 end
 
 function load_settings()
- local b = store.load_bytes(1,2)
+ local b = store_load_bytes(1,2)
  local mus = b[1]&0x80==0
- b = conv.unpack_bits({b[2]},1,4)
+ b = conv_unpack_bits({b[2]},1,4)
  return {
   music_on=mus,
   sfx_on=b[1]==0,
@@ -2185,22 +2223,22 @@ function load_settings()
 end
 
 function save_settings()
- local b = store.load_bytes(1,2)
- b = conv.unpack_bits(b,1,16)
- local b2b = conv.bool2byte
+ local b = store_load_bytes(1,2)
+ b = conv_unpack_bits(b,1,16)
+ local b2b = conv_bool2byte
  b[8]  = b2b(not settings.music_on)
  b[9]  = b2b(not settings.sfx_on)
  b[10] = b2b(settings.night)
  b[11] = b2b(settings.autosign)
  b[12] = b2b(settings.boost)
- b = conv.pack_bits(b,1)
- store.save_bytes(b,1)
+ b = conv_pack_bits(b,1)
+ store_save_bytes(b,1)
 end
 
 function load_name(start_byte)
- local b = store.load_bytes(start_byte, 2)
- b = conv.unpack_bits(b,5,3)
- return conv.bytes2str(b,enc.abc)
+ local b = store_load_bytes(start_byte, 2)
+ b = conv_unpack_bits(b,5,3)
+ return conv_bytes2str(b,enc.abc)
 end
 
 function load_last_name()
@@ -2241,29 +2279,32 @@ end
 
 enc = {}
 conv = {}
-store = {
- addr=0x5e00
-}
+store_addr = 0x5e00
 enc.abc = {
- chr = {[0]="a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z"," ",",",".",[["]],"?","!"},
+ chr = {},
  ord = {}
 }
+_chr_str = "abcdefghijklmnopqrstuvwxyz ,.?!" .. [["]]
 
-function store.init()
+function store_init()
  cartdata("ones-data")
 
+ for i=1,#_chr_str do
+  enc.abc.chr[i-1] = sub(_chr_str,i,i)
+ end
+
  for _,encoding in pairs(enc) do
-  for c,i in pairs(encoding.chr) do
-   encoding.ord[i] = c
+  for i,c in pairs(encoding.chr) do
+   encoding.ord[c] = i
   end
  end
 end
 
-function conv.bool2byte(b)
+function conv_bool2byte(b)
  return b==true and 1 or b==false and 0
 end
 
-function conv.pack_bits(bytes, n_bits)
+function conv_pack_bits(bytes, n_bits)
  local packed = {}
  local mask = 2^n_bits - 1
  local acc = 0
@@ -2283,7 +2324,7 @@ function conv.pack_bits(bytes, n_bits)
  return packed
 end
 
-function conv.unpack_bits(packed, n_bits, n_bytes)
+function conv_unpack_bits(packed, n_bits, n_bytes)
  local bytes = {}
  local mask = 2^n_bits-1
  local j = 1
@@ -2306,7 +2347,7 @@ function conv.unpack_bits(packed, n_bits, n_bytes)
  return bytes
 end
 
-function conv.str2bytes(str, encd)
+function conv_str2bytes(str, encd)
  encd = encd or enc.ascii
  local bytes = {}
  for i=1,#str do
@@ -2315,7 +2356,7 @@ function conv.str2bytes(str, encd)
  return bytes
 end
 
-function conv.bytes2str(bytes,encd)
+function conv_bytes2str(bytes,encd)
  encd = encd or enc.ascii
  local str = ""
  for b in all(bytes) do
@@ -2323,7 +2364,7 @@ function conv.bytes2str(bytes,encd)
  end
  return str
 end
-function conv.bytes2grid(bytes, n, m)
+function conv_bytes2grid(bytes, n, m)
   local grid = {}
   for j=1,n do
     add(grid,{})
@@ -2334,24 +2375,24 @@ function conv.bytes2grid(bytes, n, m)
   return grid
 end
 
-function store.save_bytes(bytes,start_byte)
+function store_save_bytes(bytes,start_byte)
   for i=1,#bytes do
-    poke(store.addr + start_byte
+    poke(store_addr + start_byte
            + i - 1, bytes[i])
   end
 end
 
-function store.load_byte(start_byte)
- return store.load_bytes(start_byte, 1)[1]
+function store_load_byte(start_byte)
+ return store_load_bytes(start_byte, 1)[1]
 end
 
-function store.load_bytes(start_byte,n)
+function store_load_bytes(start_byte,n)
  local bytes = {}
  local last_byte = start_byte+n-1
  -- assert(start_byte >= 0
  --         and last_byte <= 0xff)
  for i=start_byte,last_byte do
-   add(bytes,peek(store.addr+i))
+   add(bytes,peek(store_addr+i))
  end
  return bytes
 end
@@ -2445,8 +2486,4 @@ function animate(t, ease,
    _, v = coresume(t)
   end
  end)
-end
-
-for i=3,13 do
-  tile_scores[i] = bigint.new(3)^(i-2)
 end
