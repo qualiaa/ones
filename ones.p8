@@ -216,10 +216,8 @@ function new_bucket(state)
  return b
 end
 
-tile_scores = {} --lmap(bigint_new, {
--- filled in at bottom of cart!
 function score_tile(v)
- return v>2 and tile_scores[v] or 0
+ return v>2 and bigint_new(3)^(v-2) or 0
 end
 
 function calculate_score(grid)
@@ -2444,10 +2442,6 @@ function animate(t, ease,
    _, v = coresume(t)
   end
  end)
-end
-
-for i=3,13 do
-  tile_scores[i] = bigint_new(3)^(i-2)
 end
 
 __label__
