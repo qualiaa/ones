@@ -1245,6 +1245,8 @@ title_y = 20
 titlescreen = {}
 
 function titlescreen.init()
+ titlescreen.has_game = max_ever_val() > 2
+ if (not titlescreen.has_game) return
 
  local grid = make_grid(4,3)
  for i=3,max_ever_val() do
@@ -1258,8 +1260,11 @@ function titlescreen.init()
 end
 
 function titlescreen.update()
- game_update()
- state.next_pieces = nil
+ if titlescreen.has_game then
+  game_update()
+  state.next_pieces = nil
+ end
+
  if btnp(4) then
   menu.prior = titlescreen
   transition.init(menu, titlescreen, 0, 1)
@@ -1287,7 +1292,7 @@ function titlescreen.draw()
  print("n",59,title_y,scheme.blue)
  print("es!",63,title_y,scheme.txt)
 
- game_draw()
+ if titlescreen.has_game then game_draw() end
 
  draw_long_boy({text="hold ❎ to play"},
    32,104,true,btn(5))
