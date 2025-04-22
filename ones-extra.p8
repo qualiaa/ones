@@ -1389,7 +1389,7 @@ end
 function printc(s,x,y,c)
  y = y-- or @0x5f27
  c = c-- or @0x5f25
- for i, line in pairs(str_split(s,"\n")) do
+ for i, line in pairs(split(s,"\n")) do
   print(line,x-text_width(line)\2,y,c)
   y += 6
  end
@@ -1397,7 +1397,7 @@ end
 function printr(s,x,y,c)
  y = y-- or @0x5f27
  c = c-- or @0x5f25
- for i, line in pairs(str_split(s,"\n")) do
+ for i, line in pairs(split(s,"\n")) do
   print(line,x-text_width(line),y,c)
   y += 6
  end
@@ -1463,24 +1463,6 @@ function str_lstrip(s,ss)
   start+=1
  end
  return sub(s,start)
-end
-
-function str_split(s,d)
- local result = {}
- while #s do
-  for i=1,#s do
-   if sub(s,i,i) == d then
-    add(result,sub(s,1,i-1))
-    s = sub(s,i+1,#s)
-    break
-   elseif i == #s then
-    goto split_done
-   end
-  end
- end
- ::split_done::
- add(result,s)
- return result
 end
 
 function lmap(f,l)
