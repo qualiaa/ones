@@ -1274,11 +1274,12 @@ function titlescreen.update()
  -- all this handles
  -- play/tutorial
  elseif btn(5) then
+  mode.drawn=false
   if btnp(5) then
    -- just pressed; wait to see
    btnsfx()
    titlescreen.play_t = t()
-  elseif titlescreen.play_t and t() - titlescreen.play_t > 0.5 then
+  elseif titlescreen.play_t and t() - titlescreen.play_t > 0.75 then
    -- start new game
    state = nil -- clear our game
    init_mode(play)
@@ -1296,8 +1297,16 @@ function titlescreen.draw()
 
  if titlescreen.has_game then game_draw() end
 
- draw_long_boy({text="hold ❎ to play"},
-   32,104,true,btn(5))
+ function play_btn(focus)
+  draw_long_boy({text="hold ❎ to play"},
+    32,104,focus,btn(5))
+ end
+
+ local loader = titlescreen.play_t and (t()-titlescreen.play_t)/0.75 or 0
+ play_btn(true)
+ clip(25,0,97*loader,128)
+ play_btn(false)
+ clip()
 
  draw_top_buttons("MENU","▤",btn(4),
                   "LEARN","\^:00495d4900000000",btn(5))
@@ -2402,7 +2411,7 @@ end
 -->8
 -- easing
 
-ease = {i={},o={},io={}}
+ease = {i={},o={}}
 
 function ease.i.quad(x)
  return x*x
@@ -2420,28 +2429,10 @@ function ease.i.elastic(x)
         -2^((x-1)*10) * -sin((x * 10 - 10.75) * c))
 end
 
-function join(f1,f2,x1)
- x1 = x1 or .5
- return function(x)
-  if x < x1 then
-   return f1(x/x1)/2
-  else
-   return .5+f2((x-x1)/(1-x1))/2
-  end
- end
-end
-
 for name, fn in pairs(ease.i) do
  ease.o[name] = function(x)
   return 1 - fn(1-x)
  end
-end
-ease.o.bounce, ease.i.bounce =
-  ease.i.bounce, ease.o.bounce
-
-for name, fn in pairs(ease.i) do
- ease.io[name] =
-  join(fn, ease.o[name])
 end
 
 function tween(t, ease,
