@@ -1417,6 +1417,14 @@ panels = {
  }, {
   title="credits",
   ui=credits[2]
+ }, {
+  title="thanks ♥",
+  ui={
+    {
+      text="\-8BBS USER KIMIYORIBAKA -\nFOR MAKING A SCRIPT\nTO RECOVER p8 CARTS\nFROM HTML EXPORTS\nWITHOUT WHICH THIS\nGAME WOULD HAVE BEEN\nIRREVOCABLY LOST\n\-8tHE jEFF'S cREW -\nFOR IMMACULATE VIBES",
+      no_back=true
+    }
+  }
  }
 }
 clear_panel={
@@ -1573,7 +1581,7 @@ function draw_ui_grid(ui, index, enabled, panel_x)
     y += 5
    end
    local text = split(e.text,"\n")
-   draw_text_back(x-3,y-2,#text)
+   if (not e.no_back) draw_text_back(x-3,y-2,#text)
    for i,line in ipairs(text) do
     print(line,x-2,y+(i-1)*8,
           scheme.txt)
