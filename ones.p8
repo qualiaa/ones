@@ -1381,22 +1381,22 @@ game_opts = {
 credits = {
  {
   {
-   text="3 people made 3s!\nthreesgame.com"
+   text="3 PEOPLE MADE 3S!\nTHREESGAME.COM"
   }, {
-   text="asher vollmer",
+   text="aSHER vOLLMER",
    prefix="DESIGNED BY"
   }, {
-   text="greg wohlwend",
+   text="gREG wOHLWEND",
    prefix="ILLUSTRATED BY"
   }, {
-   text="jimmy hinson",
+   text="jIMMY hINSON",
    prefix="MUSIC BY"
   }
  }, {
   {
-   text="1 eejit made 1s!\njamiebayne.co.uk"
+   text="1 EEJIT MADE 1S!\nJAMIEBAYNE.CO.UK"
   }, {
-   text="jamie bayne",
+   text="jAMIE bAYNE",
    prefix="CLONED BY"
   }
  }
@@ -2750,3 +2750,4 @@ __music__
 00 41424344
 00 41424344
 02 41424344
+
