@@ -573,8 +573,23 @@ function tutorial_sequence()
 
  state.next_pieces = 3
  yield()
+ local bad_state = false
  while maximum(state.grid) != 5 do
+  local g = state.grid
   state.next_pieces = nil
+
+  if not bad_state then
+   for j=1,4 do
+    for i=1,2 do
+     if (g[j][i] == 4 and g[j][i+1] == 3 and g[j][i+2] == 4) or
+        (g[i][j] == 4 and g[i+1][j] == 3 and g[i+2][j] == 4) then
+      bad_state = true
+      state.next_pieces = 4
+     end
+    end
+   end
+  end
+
   yield()
  end
 
